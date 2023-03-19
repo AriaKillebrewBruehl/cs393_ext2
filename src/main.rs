@@ -255,30 +255,40 @@ fn main() -> Result<()> {
                 if elts.len() == 1 {
                     current_working_inode = 2;
                 } else {
+                    let paths = elts[1];
+                    let inode = match ext2.follow_path(paths, dirs) {
+                        Ok(dir_listing) => dir_listing,
+                        Err(_) => {
+                            println!("cd: not a directory, {}", paths);
+                            break;
+                        }
+                    };
+                    current_working_inode = inode;
+
                     // TODO: if the argument is a path, follow the path
                     // e.g., cd dir_1/dir_2 should move you down 2 directories
                     // deeper into dir_2
-                    let to_dir = elts[1];
-                    let mut found = false;
-                    for dir in &dirs {
-                        if dir.1.to_string().eq(to_dir) {
-                            // TODO: maybe don't just assume this is a directory
-                            // found = true;
-                            // current_working_inode = dir.0;
-                            found = true;
-                            let possible_inode = dir.0;
-                            // extract inode and check permissions
-                            let inode = ext2.get_inode(possible_inode);
-                            if inode.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
-                                println!("cd: not a directory: {}", to_dir);
-                            } else {
-                                current_working_inode = dir.0;
-                            }
-                        }
-                    }
-                    if !found {
-                        println!("unable to locate {}, cwd unchanged", to_dir);
-                    }
+                    // let to_dir = elts[1];
+                    // let mut found = false;
+                    // for dir in &dirs {
+                    //     if dir.1.to_string().eq(to_dir) {
+                    //         // TODO: maybe don't just assume this is a directory
+                    //         // found = true;
+                    //         // current_working_inode = dir.0;
+                    //         found = true;
+                    //         let possible_inode = dir.0;
+                    //         // extract inode and check permissions
+                    //         let inode = ext2.get_inode(possible_inode);
+                    //         if inode.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
+                    //             println!("cd: not a directory: {}", to_dir);
+                    //         } else {
+                    //             current_working_inode = dir.0;
+                    //         }
+                    //     }
+                    // }
+                    // if !found {
+                    //     println!("unable to locate {}, cwd unchanged", to_dir);
+                    // }
                 }
             } else if line.starts_with("mkdir") {
                 // `mkdir childname`
