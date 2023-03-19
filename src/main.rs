@@ -4,6 +4,7 @@ mod structs;
 use crate::structs::{BlockGroupDescriptor, DirectoryEntry, Inode, Superblock, TypePerm};
 use null_terminated::NulStr;
 use rustyline::{DefaultEditor, Result};
+use std::collections::VecDeque;
 use std::fmt;
 use std::mem;
 use uuid::Uuid;
@@ -134,6 +135,47 @@ impl Ext2 {
         }
         Ok(ret)
     }
+
+    pub fn follow_path(&self, path: &str, dirs: Vec<(usize, &NulStr)>) -> std::io::Result<usize> {
+        let mut candidate_directories: VecDeque<&str> = path.split('/').collect();
+        let mut dirs: Vec<(usize, &NulStr)> = dirs;
+        let mut possible_inode: usize = 2;
+
+        while candidate_directories.len() > 0 {
+            let candidate: &str = candidate_directories.pop_front().unwrap();
+            let mut found = false;
+            // find next directory
+            for dir in &dirs {
+                if dir.1.to_string().eq(candidate) {
+                    found = true;
+                    possible_inode = dir.0;
+                    break;
+                }
+            }
+            if !found {
+                println!("unable to locate {}", candidate);
+            } else {
+                let inode = self.get_inode(possible_inode);
+                // check type permission of inode
+                if inode.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("not a directory: {}", candidate),
+                    ));
+                } else {
+                    // update current directory
+                    dirs = match self.read_dir_inode(possible_inode) {
+                        Ok(dir_listing) => dir_listing,
+                        Err(_) => {
+                            println!("unable to read directory");
+                            break;
+                        }
+                    };
+                }
+            }
+        }
+        return Ok(possible_inode);
+    }
 }
 
 impl fmt::Debug for Inode {
@@ -184,35 +226,24 @@ fn main() -> Result<()> {
                         print!("{}\t", dir.1);
                     }
                 } else {
-                    let to_dir = elts[1];
-                    let mut found = false;
-                    let mut dirs_to_show_inode: usize = 2;
-                    for dir in &dirs {
-                        if dir.1.to_string().eq(to_dir) {
-                            found = true;
-                            let possible_inode = dir.0;
-                            let inode = ext2.get_inode(possible_inode);
-                            if inode.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
-                                println!("ls: not a directory: {}", to_dir);
-                                continue;
-                            } else {
-                                dirs_to_show_inode = dir.0;
-                            }
+                    let paths = elts[1];
+                    let inode = match ext2.follow_path(paths, dirs) {
+                        Ok(dir_listing) => dir_listing,
+                        Err(_) => {
+                            println!("unable to read directory in ls");
+                            break;
                         }
-                    }
-                    if !found {
-                        println!("unable to locate {}", to_dir);
-                    } else {
-                        let dirs_to_show = match ext2.read_dir_inode(dirs_to_show_inode) {
-                            Ok(dir_listing) => dir_listing,
-                            Err(_) => {
-                                println!("unable to read directory in ls");
-                                break;
-                            }
-                        };
-                        for dir in &dirs_to_show {
-                            print!("{}\t", dir.1);
+                    };
+                    // get directories for inode
+                    let dirs_to_show = match ext2.read_dir_inode(inode) {
+                        Ok(dir_listing) => dir_listing,
+                        Err(_) => {
+                            println!("unable to read directory in ls");
+                            break;
                         }
+                    };
+                    for dir in &dirs_to_show {
+                        print!("{}\t", dir.1);
                     }
                 }
 
