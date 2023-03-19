@@ -1,7 +1,7 @@
 #![feature(int_roundings)]
 
 mod structs;
-use crate::structs::{BlockGroupDescriptor, DirectoryEntry, Inode, Superblock};
+use crate::structs::{BlockGroupDescriptor, DirectoryEntry, Inode, Superblock, TypePerm};
 use null_terminated::NulStr;
 use rustyline::{DefaultEditor, Result};
 use std::fmt;
@@ -104,6 +104,8 @@ impl Ext2 {
                 self.superblock.inodes_per_group as usize,
             )
         };
+        let node = &inode_table[index];
+        // println!("inode permissions: {}", node.type_perm.bits());
         // probably want a Vec of BlockGroups in our Ext structure so we don't have to slice each time,
         // but this works for now.
         // println!("{:?}", inode_table);
@@ -113,6 +115,12 @@ impl Ext2 {
     pub fn read_dir_inode(&self, inode: usize) -> std::io::Result<Vec<(usize, &NulStr)>> {
         let mut ret = Vec::new();
         let root = self.get_inode(inode);
+        if root.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "inode is not a directory",
+            ));
+        }
         // println!("in read_dir_inode, #{} : {:?}", inode, root);
         // println!("following direct pointer to data block: {}", root.direct_pointer[0]);
         let entry_ptr = self.blocks[root.direct_pointer[0] as usize - self.block_offset].as_ptr();
@@ -142,7 +150,6 @@ impl fmt::Debug for Inode {
         }
     }
 }
-
 fn main() -> Result<()> {
     let disk = include_bytes!("../myfs.ext2");
     let start_addr: usize = disk.as_ptr() as usize;
@@ -155,6 +162,12 @@ fn main() -> Result<()> {
         // fetch the children of the current working directory
         let dirs = match ext2.read_dir_inode(current_working_inode) {
             Ok(dir_listing) => dir_listing,
+            // Err(ref e)
+            //     if e.kind() == std::io::ErrorKind::Other
+            //         && e.to_string() == "inode is not a directory" =>
+            // {
+            //     println!("{}", e);
+            // }
             Err(_) => {
                 println!("unable to read cwd");
                 break;
@@ -165,7 +178,6 @@ fn main() -> Result<()> {
         if let Ok(line) = buffer {
             if line.starts_with("ls") {
                 // `ls` prints our cwd's children
-                // TODO: support arguments to ls (print that directory's children instead)
                 let elts: Vec<&str> = line.split(' ').collect();
                 if elts.len() == 1 {
                     for dir in &dirs {
@@ -177,9 +189,15 @@ fn main() -> Result<()> {
                     let mut dirs_to_show_inode: usize = 2;
                     for dir in &dirs {
                         if dir.1.to_string().eq(to_dir) {
-                            // TODO: maybe don't just assume this is a directory
                             found = true;
-                            dirs_to_show_inode = dir.0;
+                            let possible_inode = dir.0;
+                            let inode = ext2.get_inode(possible_inode);
+                            if inode.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
+                                println!("ls: not a directory: {}", to_dir);
+                                continue;
+                            } else {
+                                dirs_to_show_inode = dir.0;
+                            }
                         }
                     }
                     if !found {
@@ -214,8 +232,17 @@ fn main() -> Result<()> {
                     for dir in &dirs {
                         if dir.1.to_string().eq(to_dir) {
                             // TODO: maybe don't just assume this is a directory
+                            // found = true;
+                            // current_working_inode = dir.0;
                             found = true;
-                            current_working_inode = dir.0;
+                            let possible_inode = dir.0;
+                            // extract inode and check permissions
+                            let inode = ext2.get_inode(possible_inode);
+                            if inode.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
+                                println!("cd: not a directory: {}", to_dir);
+                            } else {
+                                current_working_inode = dir.0;
+                            }
                         }
                     }
                     if !found {
