@@ -136,10 +136,12 @@ impl Ext2 {
         Ok(ret)
     }
 
-    pub fn follow_path(&self, path: &str, dirs: Vec<(usize, &NulStr)>) -> std::io::Result<usize> {
+    pub fn follow_path(&self, path: &str, dirs: Vec<(usize, &NulStr)>) -> usize {
         let mut candidate_directories: VecDeque<&str> = path.split('/').collect();
         let mut dirs: Vec<(usize, &NulStr)> = dirs;
         let mut possible_inode: usize = 2;
+        // directory where the call is made from
+        let initial_dir = dirs[0].0;
 
         while candidate_directories.len() > 0 {
             let candidate: &str = candidate_directories.pop_front().unwrap();
@@ -148,6 +150,7 @@ impl Ext2 {
             for dir in &dirs {
                 if dir.1.to_string().eq(candidate) {
                     found = true;
+                    // update inode of current directory
                     possible_inode = dir.0;
                     break;
                 }
@@ -158,10 +161,8 @@ impl Ext2 {
                 let inode = self.get_inode(possible_inode);
                 // check type permission of inode
                 if inode.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("not a directory: {}", candidate),
-                    ));
+                    println!("not a directory: {}", candidate);
+                    return initial_dir;
                 } else {
                     // update current directory
                     dirs = match self.read_dir_inode(possible_inode) {
@@ -174,7 +175,7 @@ impl Ext2 {
                 }
             }
         }
-        return Ok(possible_inode);
+        return possible_inode;
     }
 }
 
@@ -204,12 +205,6 @@ fn main() -> Result<()> {
         // fetch the children of the current working directory
         let dirs = match ext2.read_dir_inode(current_working_inode) {
             Ok(dir_listing) => dir_listing,
-            // Err(ref e)
-            //     if e.kind() == std::io::ErrorKind::Other
-            //         && e.to_string() == "inode is not a directory" =>
-            // {
-            //     println!("{}", e);
-            // }
             Err(_) => {
                 println!("unable to read cwd");
                 break;
@@ -227,13 +222,7 @@ fn main() -> Result<()> {
                     }
                 } else {
                     let paths = elts[1];
-                    let inode = match ext2.follow_path(paths, dirs) {
-                        Ok(dir_listing) => dir_listing,
-                        Err(_) => {
-                            println!("unable to read directory in ls");
-                            break;
-                        }
-                    };
+                    let inode = ext2.follow_path(paths, dirs);
                     // get directories for inode
                     let dirs_to_show = match ext2.read_dir_inode(inode) {
                         Ok(dir_listing) => dir_listing,
@@ -256,13 +245,8 @@ fn main() -> Result<()> {
                     current_working_inode = 2;
                 } else {
                     let paths = elts[1];
-                    let inode = match ext2.follow_path(paths, dirs) {
-                        Ok(dir_listing) => dir_listing,
-                        Err(_) => {
-                            println!("cd: not a directory, {}", paths);
-                            break;
-                        }
-                    };
+                    let inode = ext2.follow_path(paths, dirs);
+
                     current_working_inode = inode;
 
                     // TODO: if the argument is a path, follow the path
