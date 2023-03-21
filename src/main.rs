@@ -136,15 +136,16 @@ impl Ext2 {
         Ok(ret)
     }
 
-    pub fn follow_path(&self, path: &str, dirs: Vec<(usize, &NulStr)>) -> usize {
+    pub fn follow_path(&self, path: &str, dirs: Vec<(usize, &NulStr)>) -> (usize, &str) {
         let mut candidate_directories: VecDeque<&str> = path.split('/').collect();
         let mut dirs: Vec<(usize, &NulStr)> = dirs;
         let mut possible_inode: usize = 2;
         // directory where the call is made from
         let initial_dir = dirs[0].0;
+        let mut candidate: &str;
 
         while candidate_directories.len() > 0 {
-            let candidate: &str = candidate_directories.pop_front().unwrap();
+            candidate = candidate_directories.pop_front().unwrap();
             let mut found = false;
             // find next directory
             for dir in &dirs {
@@ -159,10 +160,12 @@ impl Ext2 {
                 println!("unable to locate {}", candidate);
             } else {
                 let inode = self.get_inode(possible_inode);
-                // check type permission of inode
-                if inode.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
+                // check type permission of inode, for last inode can be not a directory (for cat)
+                if inode.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY
+                    && candidate_directories.len() != 0
+                {
                     println!("not a directory: {}", candidate);
-                    return initial_dir;
+                    return (initial_dir, candidate);
                 } else {
                     // update current directory
                     dirs = match self.read_dir_inode(possible_inode) {
@@ -175,7 +178,7 @@ impl Ext2 {
                 }
             }
         }
-        return possible_inode;
+        return (possible_inode, candidate);
     }
 }
 
@@ -223,6 +226,53 @@ fn main() -> Result<()> {
                 } else {
                     let paths = elts[1];
                     let inode = ext2.follow_path(paths, dirs);
+                    let possible_inode = ext2.get_inode(inode.0);
+                    if possible_inode.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
+                        println!("not a directory: {}", inode.1);
+                    }
+                    // get directories for inode
+                    let dirs_to_show = match ext2.read_dir_inode(inode.0) {
+                        Ok(dir_listing) => dir_listing,
+                        Err(_) => {
+                            println!("unable to read directory in ls");
+                            break;
+                        }
+                    };
+                    for dir in &dirs_to_show {
+                        print!("{}\t", dir.1);
+                    }
+                }
+            } else if line.starts_with("cd") {
+                // `cd` with no arguments, cd goes back to root
+                // `cd dir_name` moves cwd to that directory
+                let elts: Vec<&str> = line.split(' ').collect();
+                if elts.len() == 1 {
+                    current_working_inode = 2;
+                } else {
+                    let paths = elts[1];
+                    let inode = ext2.follow_path(paths, dirs);
+                    let possible_inode = ext2.get_inode(inode.0);
+                    if possible_inode.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
+                        println!("not a directory: {}", inode.1);
+                    }
+                    current_working_inode = inode.0;
+                }
+            } else if line.starts_with("mkdir") {
+                // `mkdir childname`
+                // create a directory with the given name, add a link to cwd
+                // consider supporting `-p path/to_file` to create a path of directories
+                println!("mkdir not yet implemented");
+            } else if line.starts_with("cat") {
+                // `cat filename`
+                // print the contents of filename to stdout
+                // if it's a directory, print a nice error
+                let elts: Vec<&str> = line.split(' ').collect();
+                if elts.len() == 1 {
+                    print!("must pass file to show");
+                } else {
+                    let paths = elts[1];
+                    // get inode of potential file
+                    let inode = ext2.follow_path(paths, dirs);
                     // get directories for inode
                     let dirs_to_show = match ext2.read_dir_inode(inode) {
                         Ok(dir_listing) => dir_listing,
@@ -235,54 +285,6 @@ fn main() -> Result<()> {
                         print!("{}\t", dir.1);
                     }
                 }
-
-                println!();
-            } else if line.starts_with("cd") {
-                // `cd` with no arguments, cd goes back to root
-                // `cd dir_name` moves cwd to that directory
-                let elts: Vec<&str> = line.split(' ').collect();
-                if elts.len() == 1 {
-                    current_working_inode = 2;
-                } else {
-                    let paths = elts[1];
-                    let inode = ext2.follow_path(paths, dirs);
-
-                    current_working_inode = inode;
-
-                    // TODO: if the argument is a path, follow the path
-                    // e.g., cd dir_1/dir_2 should move you down 2 directories
-                    // deeper into dir_2
-                    // let to_dir = elts[1];
-                    // let mut found = false;
-                    // for dir in &dirs {
-                    //     if dir.1.to_string().eq(to_dir) {
-                    //         // TODO: maybe don't just assume this is a directory
-                    //         // found = true;
-                    //         // current_working_inode = dir.0;
-                    //         found = true;
-                    //         let possible_inode = dir.0;
-                    //         // extract inode and check permissions
-                    //         let inode = ext2.get_inode(possible_inode);
-                    //         if inode.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
-                    //             println!("cd: not a directory: {}", to_dir);
-                    //         } else {
-                    //             current_working_inode = dir.0;
-                    //         }
-                    //     }
-                    // }
-                    // if !found {
-                    //     println!("unable to locate {}, cwd unchanged", to_dir);
-                    // }
-                }
-            } else if line.starts_with("mkdir") {
-                // `mkdir childname`
-                // create a directory with the given name, add a link to cwd
-                // consider supporting `-p path/to_file` to create a path of directories
-                println!("mkdir not yet implemented");
-            } else if line.starts_with("cat") {
-                // `cat filename`
-                // print the contents of filename to stdout
-                // if it's a directory, print a nice error
                 println!("cat not yet implemented");
             } else if line.starts_with("rm") {
                 // `rm target`
