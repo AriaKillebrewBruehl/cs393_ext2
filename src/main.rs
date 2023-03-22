@@ -7,6 +7,7 @@ use rustyline::{DefaultEditor, Result};
 use std::collections::VecDeque;
 use std::fmt;
 use std::mem;
+use std::str;
 use uuid::Uuid;
 use zerocopy::ByteSlice;
 
@@ -123,7 +124,10 @@ impl Ext2 {
             ));
         }
         // println!("in read_dir_inode, #{} : {:?}", inode, root);
-        // println!("following direct pointer to data block: {}", root.direct_pointer[0]);
+        // println!(
+        //     "following direct pointer to data block: {}",
+        //     root.direct_pointer[0]
+        // );
         let entry_ptr = self.blocks[root.direct_pointer[0] as usize - self.block_offset].as_ptr();
         let mut byte_offset: isize = 0;
         while byte_offset < root.size_low as isize {
@@ -168,14 +172,16 @@ impl Ext2 {
                     // return (initial_dir, candidate);
                     return initial_dir;
                 } else {
-                    // update current directory
-                    dirs = match self.read_dir_inode(possible_inode) {
-                        Ok(dir_listing) => dir_listing,
-                        Err(_) => {
-                            println!("unable to read directory");
-                            break;
+                    if candidate_directories.len() > 0 {
+                        // update current directory
+                        dirs = match self.read_dir_inode(possible_inode) {
+                            Ok(dir_listing) => dir_listing,
+                            Err(_) => {
+                                println!("unable to read directory");
+                                break;
+                            }
                         }
-                    };
+                    }
                 }
             }
         }
@@ -183,30 +189,33 @@ impl Ext2 {
         return possible_inode;
     }
 
-    pub fn read_file_inode(&self, inode: usize) -> std::io::Result<&str> {
-        let mut ret = Vec::new();
+    pub fn read_file_inode(&self, inode: usize) -> std::io::Result<&[u8]> {
+        // let mut ret = Vec::new();
         let root = self.get_inode(inode);
-        if root.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
+        // make sure we are reading a file
+        if root.type_perm & TypePerm::FILE != TypePerm::FILE {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::Other,
-                "inode is not a directory",
+                "inode is not a file",
             ));
         }
         // println!("in read_dir_inode, #{} : {:?}", inode, root);
-        println!(
-            "following direct pointer to data block: {}",
-            root.direct_pointer[0]
-        );
-        let entry_ptr = self.blocks[root.direct_pointer[0] as usize - self.block_offset].as_ptr();
-        let mut byte_offset: isize = 0;
-        while byte_offset < root.size_low as isize {
-            // <- todo, support large directories
-            let directory = unsafe { &*(entry_ptr.offset(byte_offset) as *const DirectoryEntry) };
-            // println!("{:?}", directory);
-            byte_offset += directory.entry_size as isize;
-            ret.push((directory.inode as usize, &directory.name));
-        }
-        Ok("")
+        // println!(
+        //     "following direct pointer to data block: {}",
+        //     root.direct_pointer[0]
+        // );
+        let file_bytes = self.blocks[root.direct_pointer[0] as usize - self.block_offset];
+        // println!("{}", str::from_utf8(file_bytes).unwrap());
+        // let entry_ptr = self.blocks[root.direct_pointer[0] as usize - self.block_offset].as_ptr();
+        // let mut byte_offset: isize = 0;
+        // while byte_offset < root.size_low as isize {
+        //     // <- todo, support large directories
+        //     let byte = unsafe { &*(entry_ptr.offset(byte_offset) as *const u8) };
+        //     println!("{:?}", byte.to_string());
+        //     byte_offset += 8;
+        //     ret.push(byte);
+        // }
+        Ok(file_bytes)
     }
 }
 
@@ -260,7 +269,7 @@ fn main() -> Result<()> {
                     if possible_inode.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
                         println!("not a directory: {}", inode);
                     }
-                    // get directories for inode
+                    // get directories for
                     let dirs_to_show = match ext2.read_dir_inode(inode) {
                         Ok(dir_listing) => dir_listing,
                         Err(_) => {
@@ -271,6 +280,7 @@ fn main() -> Result<()> {
                     for dir in &dirs_to_show {
                         print!("{}\t", dir.1);
                     }
+                    println!();
                 }
             } else if line.starts_with("cd") {
                 // `cd` with no arguments, cd goes back to root
@@ -309,11 +319,17 @@ fn main() -> Result<()> {
                     if inode.type_perm & TypePerm::FILE != TypePerm::FILE {
                         println!("not a file: {}", possible_inode);
                     } else {
-                        // inode.dir
-                        let s = ext2.read_file_inode(possible_inode);
+                        let s = match ext2.read_file_inode(possible_inode) {
+                            Ok(file_data) => file_data,
+                            Err(_) => {
+                                println!("unable to read directory in ls");
+                                break;
+                            }
+                        };
+                        println!("{}", str::from_utf8(s).unwrap());
                     }
                 }
-                println!("cat not yet implemented");
+                // println!("cat not yet implemented");
             } else if line.starts_with("rm") {
                 // `rm target`
                 // unlink a file or empty directory
