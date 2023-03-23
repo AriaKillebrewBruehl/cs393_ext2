@@ -140,20 +140,28 @@ impl Ext2 {
         Ok(ret)
     }
 
-    pub fn follow_path(&self, path: &str, dirs: Vec<(usize, &NulStr)>) -> usize {
+    // lifetime of the return value needs to be the same as the lifetime of path
+    pub fn follow_path_tuple<'a, 'b>(
+        self: &'a Ext2,
+        path: &'b str,
+        dirs: Vec<(usize, &NulStr)>,
+    ) -> (usize, &'b str) {
         let mut candidate_directories: VecDeque<&str> = path.split('/').collect();
         let mut dirs: Vec<(usize, &NulStr)> = dirs;
         let mut possible_inode: usize = 2;
         // directory where the call is made from
         let initial_dir = dirs[0].0;
-        let mut candidate: &str = &dirs[0].1.to_string();
+        // canddiate is a borrow from the scope of this function, borrowing something that lives for the scope of this fucntion
+        // so when we reference at the end of the function the reference will die
+        // so we can't return the reference bc it is to something that lives on the stack which will die
+        let mut candidate = None;
 
         while candidate_directories.len() > 0 {
-            candidate = candidate_directories.pop_front().unwrap();
+            candidate = Some(candidate_directories.pop_front().unwrap());
             let mut found = false;
             // find next directory
             for dir in &dirs {
-                if dir.1.to_string().eq(candidate) {
+                if dir.1.to_string().eq(candidate.unwrap()) {
                     found = true;
                     // update inode of current directory
                     possible_inode = dir.0;
@@ -161,16 +169,17 @@ impl Ext2 {
                 }
             }
             if !found {
-                println!("unable to locate {}", candidate);
+                println!("unable to locate {}", candidate.unwrap());
             } else {
                 let inode = self.get_inode(possible_inode);
                 // check type permission of inode, for last inode can be not a directory (for cat)
                 if inode.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY
                     && candidate_directories.len() != 0
                 {
-                    println!("not a directory: {}", candidate);
+                    println!("not a directory: {}", candidate.unwrap());
                     // return (initial_dir, candidate);
-                    return initial_dir;
+                    // lifetime is how long is the scope of the thing passed in
+                    return (initial_dir, candidate.unwrap());
                 } else {
                     if candidate_directories.len() > 0 {
                         // update current directory
@@ -186,7 +195,7 @@ impl Ext2 {
             }
         }
         // return (possible_inode, &candidate);
-        return possible_inode;
+        return (possible_inode, candidate.unwrap());
     }
 
     pub fn read_file_inode(&self, inode: usize) -> std::io::Result<&[u8]> {
@@ -263,14 +272,14 @@ fn main() -> Result<()> {
                     println!();
                 } else {
                     let paths = elts[1];
-                    let inode = ext2.follow_path(paths, dirs);
+                    let inode = ext2.follow_path_tuple(paths, dirs);
+                    let possible_inode = ext2.get_inode(inode.0);
                     // let possible_inode = ext2.get_inode(inode.0);
-                    let possible_inode = ext2.get_inode(inode);
                     if possible_inode.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
-                        println!("not a directory: {}", inode);
+                        println!("not a directory: {}", paths);
                     }
                     // get directories for
-                    let dirs_to_show = match ext2.read_dir_inode(inode) {
+                    let dirs_to_show = match ext2.read_dir_inode(inode.0) {
                         Ok(dir_listing) => dir_listing,
                         Err(_) => {
                             println!("unable to read directory in ls");
@@ -290,13 +299,13 @@ fn main() -> Result<()> {
                     current_working_inode = 2;
                 } else {
                     let paths = elts[1];
-                    let inode = ext2.follow_path(paths, dirs);
-                    // let possible_inode = ext2.get_inode(inode.0);
-                    let possible_inode = ext2.get_inode(inode);
+                    let inode = ext2.follow_path_tuple(paths, dirs);
+                    let possible_inode = ext2.get_inode(inode.0);
+                    // let possible_inode = ext2.get_inode(inode);
                     if possible_inode.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
-                        println!("not a directory: {}", inode);
+                        println!("not a directory: {}", inode.1);
                     }
-                    current_working_inode = inode;
+                    current_working_inode = inode.0;
                 }
             } else if line.starts_with("mkdir") {
                 // `mkdir childname`
@@ -314,12 +323,12 @@ fn main() -> Result<()> {
                     let paths = elts[1];
                     // get inode of potential file
                     // let possible_inode = ext2.follow_path(paths, dirs);
-                    let possible_inode = ext2.follow_path(paths, dirs);
-                    let inode = ext2.get_inode(possible_inode);
+                    let possible_inode = ext2.follow_path_tuple(paths, dirs);
+                    let inode = ext2.get_inode(possible_inode.0);
                     if inode.type_perm & TypePerm::FILE != TypePerm::FILE {
-                        println!("not a file: {}", possible_inode);
+                        println!("not a file: {}", possible_inode.1);
                     } else {
-                        let s = match ext2.read_file_inode(possible_inode) {
+                        let s = match ext2.read_file_inode(possible_inode.0) {
                             Ok(file_data) => file_data,
                             Err(_) => {
                                 println!("unable to read directory in ls");
