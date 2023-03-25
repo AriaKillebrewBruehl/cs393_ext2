@@ -205,9 +205,6 @@ impl Ext2 {
         let mut possible_inode: usize = 2;
         // directory where the call is made from
         let initial_dir = dirs[0].0;
-        // canddiate is a borrow from the scope of this function, borrowing something that lives for the scope of this fucntion
-        // so when we reference at the end of the function the reference will die
-        // so we can't return the reference bc it is to something that lives on the stack which will die
         let mut candidate = None;
 
         while candidate_directories.len() > 0 {
@@ -231,8 +228,6 @@ impl Ext2 {
                     && candidate_directories.len() != 0
                 {
                     println!("not a directory: {}", candidate.unwrap());
-                    // return (initial_dir, candidate);
-                    // lifetime is how long is the scope of the thing passed in
                     return initial_dir;
                 } else {
                     if candidate_directories.len() > 0 {
@@ -270,15 +265,10 @@ impl Ext2 {
         // println!("{}", str::from_utf8(file_bytes).unwrap());
         // let entry_ptr = self.blocks[root.direct_pointer[0] as usize - self.block_offset].as_ptr();
         // let mut byte_offset: isize = 0;
-        // while byte_offset < root.size_low as isize {
-        //     // <- todo, support large directories
-        //     let byte = unsafe { &*(entry_ptr.offset(byte_offset) as *const u8) };
-        //     println!("{:?}", byte.to_string());
-        //     byte_offset += 8;
-        //     ret.push(byte);
-        // }
         Ok(file_bytes)
     }
+
+    pub fn ls(&self, command: &str) -> Result<(), Err> {}
 }
 
 impl fmt::Debug for Inode {
