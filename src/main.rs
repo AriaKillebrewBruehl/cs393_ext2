@@ -396,30 +396,7 @@ fn main() -> Result<()> {
                 // consider supporting `-p path/to_file` to create a path of directories
                 println!("mkdir not yet implemented");
             } else if line.starts_with("cat") {
-                // `cat filename`
-                // print the contents of filename to stdout
-                // if it's a directory, print a nice error
-                let elts: Vec<&str> = line.split(' ').collect();
-                if elts.len() == 1 {
-                    print!("must pass file to show");
-                } else {
-                    let paths = elts[1];
-                    // get inode of potential file
-                    let possible_inode = ext2.follow_path(paths, dirs);
-                    let inode = ext2.get_inode(possible_inode);
-                    if inode.type_perm & TypePerm::FILE != TypePerm::FILE {
-                        println!("not a file: {}", paths);
-                    } else {
-                        let s = match ext2.read_file_inode(possible_inode) {
-                            Ok(file_data) => file_data,
-                            Err(_) => {
-                                println!("unable to read directory in ls");
-                                break;
-                            }
-                        };
-                        println!("{}", str::from_utf8(s).unwrap());
-                    }
-                }
+                ext2.cat(dirs, line);
                 // println!("cat not yet implemented");
             } else if line.starts_with("rm") {
                 // `rm target`
