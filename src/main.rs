@@ -199,7 +199,7 @@ impl Ext2 {
     }
 
     // lifetime of the return value needs to be the same as the lifetime of path
-    pub fn follow_path(&self, path: &str, dirs: Vec<(usize, &NulStr)>) -> usize {
+    pub fn follow_path(&self, path: &str, dirs: Vec<(usize, &NulStr)>) -> Option<usize> {
         let mut candidate_directories: VecDeque<&str> = path.split('/').collect();
         let mut dirs: Vec<(usize, &NulStr)> = dirs;
         let mut possible_inode: usize = 2;
@@ -221,6 +221,7 @@ impl Ext2 {
             }
             if !found {
                 println!("unable to locate {}", candidate.unwrap());
+                return None;
             } else {
                 let inode = self.get_inode(possible_inode);
                 // check type permission of inode, for last inode can be not a directory (for cat)
@@ -228,7 +229,7 @@ impl Ext2 {
                     && candidate_directories.len() != 0
                 {
                     println!("not a directory: {}", candidate.unwrap());
-                    return initial_dir;
+                    return Some(initial_dir);
                 } else {
                     if candidate_directories.len() > 0 {
                         // update current directory
@@ -243,7 +244,7 @@ impl Ext2 {
                 }
             }
         }
-        return possible_inode;
+        return Some(possible_inode);
     }
 
     pub fn read_file_inode(&self, inode: usize) -> std::io::Result<&[u8]> {
@@ -268,7 +269,7 @@ impl Ext2 {
         Ok(file_bytes)
     }
 
-    pub fn ls(&self, dirs: Vec<(usize, &NulStr)>, command: String) -> std::io::Result<()> {
+    pub fn ls(&self, dirs: Vec<(usize, &NulStr)>, command: String) -> Option<()> {
         let elts: Vec<&str> = command.split(' ').collect();
         if elts.len() == 1 {
             for dir in &dirs {
@@ -278,45 +279,55 @@ impl Ext2 {
         } else {
             let paths = elts[1];
             let inode = self.follow_path(paths, dirs);
-            let possible_inode = self.get_inode(inode);
+            if inode.is_none() {
+                println!("unable to follow path");
+            }
+            let possible_inode = self.get_inode(inode.unwrap());
             if possible_inode.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
                 println!("not a directory: {}", paths);
             }
             // get directories for
-            let dirs_to_show: Option<Vec<(usize, &NulStr)>> = match self.read_dir_inode(inode) {
-                Ok(dir_listing) => Some(dir_listing),
-                Err(_) => None,
-            };
+            let dirs_to_show: Option<Vec<(usize, &NulStr)>> =
+                match self.read_dir_inode(inode.unwrap()) {
+                    Ok(dir_listing) => Some(dir_listing),
+                    Err(_) => None,
+                };
             if dirs_to_show.is_none() {
                 println!("unable to read directory in ls");
+                return None;
             }
             for dir in &dirs_to_show.unwrap() {
                 print!("{}\t", dir.1);
             }
             println!();
         }
-        return Ok(());
+        return Some(());
     }
 
-    pub fn cd(&self, dirs: Vec<(usize, &NulStr)>, command: String) -> std::io::Result<(usize)> {
+    pub fn cd(&self, dirs: Vec<(usize, &NulStr)>, command: String) -> Option<usize> {
         // `cd` with no arguments, cd goes back to root
         // `cd dir_name` moves cwd to that directory
         let elts: Vec<&str> = command.split(' ').collect();
         if elts.len() == 1 {
-            return Ok(2);
+            return Some(2);
         } else {
             let paths = elts[1];
             let inode = self.follow_path(paths, dirs);
-            let possible_inode = self.get_inode(inode);
-            // let possible_inode = ext2.get_inode(inode);
-            if possible_inode.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
-                println!("not a directory: {}", paths);
+            if inode.is_none() {
+                println!("cd: unable to find directory: {}", paths);
+                return None;
+            } else {
+                let possible_inode = self.get_inode(inode.unwrap());
+                // let possible_inode = ext2.get_inode(inode);
+                if possible_inode.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
+                    println!("not a directory: {}", paths);
+                }
+                return Some(inode.unwrap());
             }
-            return Ok(inode);
         }
     }
 
-    pub fn cat(&self, dirs: Vec<(usize, &NulStr)>, command: String) -> std::io::Result<()> {
+    pub fn cat(&self, dirs: Vec<(usize, &NulStr)>, command: String) -> Option<()> {
         // `cat filename`
         // print the contents of filename to stdout
         // if it's a directory, print a nice error
@@ -327,22 +338,28 @@ impl Ext2 {
             let paths = elts[1];
             // get inode of potential file
             let possible_inode = self.follow_path(paths, dirs);
-            let inode = self.get_inode(possible_inode);
-            if inode.type_perm & TypePerm::FILE != TypePerm::FILE {
-                println!("not a file: {}", paths);
+            if possible_inode.is_none() {
+                println!("unable to follow path");
             } else {
-                let s: Option<&[u8]> = match self.read_file_inode(possible_inode) {
-                    Ok(file_data) => Some(file_data),
-                    Err(_) => None,
-                };
-                if s.is_none() {
-                    println!("unable to cat file: {}", paths);
+                let inode = self.get_inode(possible_inode.unwrap());
+                if inode.type_perm & TypePerm::FILE != TypePerm::FILE {
+                    println!("not a file: {}", paths);
+                    return None;
                 } else {
-                    println!("{}", str::from_utf8(s.unwrap()).unwrap());
+                    let s: Option<&[u8]> = match self.read_file_inode(possible_inode.unwrap()) {
+                        Ok(file_data) => Some(file_data),
+                        Err(_) => None,
+                    };
+                    if s.is_none() {
+                        println!("unable to cat file: {}", paths);
+                        return None;
+                    } else {
+                        println!("{}", str::from_utf8(s.unwrap()).unwrap());
+                    }
                 }
             }
         }
-        return Ok(());
+        return Some(());
     }
 }
 
@@ -381,14 +398,16 @@ fn main() -> Result<()> {
         let buffer = rl.readline(":> ");
         if let Ok(line) = buffer {
             if line.starts_with("ls") {
-                ext2.ls(dirs, line);
+                let success = ext2.ls(dirs, line);
+                if success.is_none() {
+                    println!("unable to read directory in ls");
+                }
             } else if line.starts_with("cd") {
-                current_working_inode = match ext2.cd(dirs, line) {
-                    Ok(inode) => inode,
-                    Err(_) => {
-                        println!("unable to read directory in ccd");
-                        break;
-                    }
+                let possible_working_inode = ext2.cd(dirs, line);
+                if possible_working_inode.is_none() {
+                    println!("unable to read directory in cd");
+                } else {
+                    current_working_inode = possible_working_inode.unwrap();
                 }
             } else if line.starts_with("mkdir") {
                 // `mkdir childname`
@@ -396,7 +415,10 @@ fn main() -> Result<()> {
                 // consider supporting `-p path/to_file` to create a path of directories
                 println!("mkdir not yet implemented");
             } else if line.starts_with("cat") {
-                ext2.cat(dirs, line);
+                let success = ext2.cat(dirs, line);
+                if success.is_none() {
+                    println!("unable to cat file");
+                }
                 // println!("cat not yet implemented");
             } else if line.starts_with("rm") {
                 // `rm target`
@@ -414,10 +436,10 @@ fn main() -> Result<()> {
                 println!("link not yet implemented");
             } else if line.starts_with("quit") || line.starts_with("exit") {
                 break;
+            } else {
+                println!("bye!");
+                break;
             }
-        } else {
-            println!("bye!");
-            break;
         }
     }
     Ok(())
