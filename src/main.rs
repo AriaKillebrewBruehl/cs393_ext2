@@ -268,7 +268,35 @@ impl Ext2 {
         Ok(file_bytes)
     }
 
-    pub fn ls(&self, command: &str) -> Result<(), Err> {}
+    pub fn ls(&self, dirs: Vec<(usize, &NulStr)>, command: String) -> std::io::Result<()> {
+        let elts: Vec<&str> = command.split(' ').collect();
+        if elts.len() == 1 {
+            for dir in &dirs {
+                print!("{}\t", dir.1);
+            }
+            println!();
+        } else {
+            let paths = elts[1];
+            let inode = self.follow_path(paths, dirs);
+            let possible_inode = self.get_inode(inode);
+            if possible_inode.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
+                println!("not a directory: {}", paths);
+            }
+            // get directories for
+            let dirs_to_show: Option<Vec<(usize, &NulStr)>> = match self.read_dir_inode(inode) {
+                Ok(dir_listing) => Some(dir_listing),
+                Err(_) => None,
+            };
+            if dirs_to_show.is_none() {
+                println!("unable to read directory in ls");
+            }
+            for dir in &dirs_to_show.unwrap() {
+                print!("{}\t", dir.1);
+            }
+            println!();
+        }
+        return Ok(());
+    }
 }
 
 impl fmt::Debug for Inode {
@@ -306,33 +334,7 @@ fn main() -> Result<()> {
         let buffer = rl.readline(":> ");
         if let Ok(line) = buffer {
             if line.starts_with("ls") {
-                // `ls` prints our cwd's children
-                let elts: Vec<&str> = line.split(' ').collect();
-                if elts.len() == 1 {
-                    for dir in &dirs {
-                        print!("{}\t", dir.1);
-                    }
-                    println!();
-                } else {
-                    let paths = elts[1];
-                    let inode = ext2.follow_path(paths, dirs);
-                    let possible_inode = ext2.get_inode(inode);
-                    if possible_inode.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
-                        println!("not a directory: {}", paths);
-                    }
-                    // get directories for
-                    let dirs_to_show = match ext2.read_dir_inode(inode) {
-                        Ok(dir_listing) => dir_listing,
-                        Err(_) => {
-                            println!("unable to read directory in ls");
-                            break;
-                        }
-                    };
-                    for dir in &dirs_to_show {
-                        print!("{}\t", dir.1);
-                    }
-                    println!();
-                }
+                ext2.ls(dirs, line);
             } else if line.starts_with("cd") {
                 // `cd` with no arguments, cd goes back to root
                 // `cd dir_name` moves cwd to that directory
