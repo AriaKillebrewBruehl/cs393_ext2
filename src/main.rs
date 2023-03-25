@@ -297,6 +297,24 @@ impl Ext2 {
         }
         return Ok(());
     }
+
+    pub fn cd(&self, dirs: Vec<(usize, &NulStr)>, command: String) -> std::io::Result<(usize)> {
+        // `cd` with no arguments, cd goes back to root
+        // `cd dir_name` moves cwd to that directory
+        let elts: Vec<&str> = command.split(' ').collect();
+        if elts.len() == 1 {
+            return Ok(2);
+        } else {
+            let paths = elts[1];
+            let inode = self.follow_path(paths, dirs);
+            let possible_inode = self.get_inode(inode);
+            // let possible_inode = ext2.get_inode(inode);
+            if possible_inode.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
+                println!("not a directory: {}", paths);
+            }
+            return Ok(inode);
+        }
+    }
 }
 
 impl fmt::Debug for Inode {
@@ -336,20 +354,12 @@ fn main() -> Result<()> {
             if line.starts_with("ls") {
                 ext2.ls(dirs, line);
             } else if line.starts_with("cd") {
-                // `cd` with no arguments, cd goes back to root
-                // `cd dir_name` moves cwd to that directory
-                let elts: Vec<&str> = line.split(' ').collect();
-                if elts.len() == 1 {
-                    current_working_inode = 2;
-                } else {
-                    let paths = elts[1];
-                    let inode = ext2.follow_path(paths, dirs);
-                    let possible_inode = ext2.get_inode(inode);
-                    // let possible_inode = ext2.get_inode(inode);
-                    if possible_inode.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
-                        println!("not a directory: {}", paths);
+                current_working_inode = match ext2.cd(dirs, line) {
+                    Ok(inode) => inode,
+                    Err(_) => {
+                        println!("unable to read directory in ccd");
+                        break;
                     }
-                    current_working_inode = inode;
                 }
             } else if line.starts_with("mkdir") {
                 // `mkdir childname`
