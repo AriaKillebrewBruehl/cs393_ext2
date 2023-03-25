@@ -315,6 +315,35 @@ impl Ext2 {
             return Ok(inode);
         }
     }
+
+    pub fn cat(&self, dirs: Vec<(usize, &NulStr)>, command: String) -> std::io::Result<()> {
+        // `cat filename`
+        // print the contents of filename to stdout
+        // if it's a directory, print a nice error
+        let elts: Vec<&str> = command.split(' ').collect();
+        if elts.len() == 1 {
+            print!("must pass file to show");
+        } else {
+            let paths = elts[1];
+            // get inode of potential file
+            let possible_inode = self.follow_path(paths, dirs);
+            let inode = self.get_inode(possible_inode);
+            if inode.type_perm & TypePerm::FILE != TypePerm::FILE {
+                println!("not a file: {}", paths);
+            } else {
+                let s: Option<&[u8]> = match self.read_file_inode(possible_inode) {
+                    Ok(file_data) => Some(file_data),
+                    Err(_) => None,
+                };
+                if s.is_none() {
+                    println!("unable to cat file: {}", paths);
+                } else {
+                    println!("{}", str::from_utf8(s.unwrap()).unwrap());
+                }
+            }
+        }
+        return Ok(());
+    }
 }
 
 impl fmt::Debug for Inode {
