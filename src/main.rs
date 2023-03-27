@@ -243,12 +243,12 @@ impl Ext2 {
                     }
                 }
             }
-        }
-        return Some(possible_inode);
+        } return Some(possible_inode);
     }
 
-    pub fn read_file_inode(&self, inode: usize) -> std::io::Result<&[u8]> {
-        // let mut ret = Vec::new();
+
+   pub fn read_file_inode(&self, inode: usize) -> std::io::Result<Vec<&NulStr>> {
+        let mut ret = Vec::new();
         let root = self.get_inode(inode);
         // make sure we are reading a file
         if root.type_perm & TypePerm::FILE != TypePerm::FILE {
@@ -257,16 +257,18 @@ impl Ext2 {
                 "inode is not a file",
             ));
         }
-        // println!("in read_dir_inode, #{} : {:?}", inode, root);
-        // println!(
-        //     "following direct pointer to data block: {}",
-        //     root.direct_pointer[0]
-        // );
-        let file_bytes = self.blocks[root.direct_pointer[0] as usize - self.block_offset];
-        // println!("{}", str::from_utf8(file_bytes).unwrap());
-        // let entry_ptr = self.blocks[root.direct_pointer[0] as usize - self.block_offset].as_ptr();
-        // let mut byte_offset: isize = 0;
-        Ok(file_bytes)
+
+        // we should go through all the direct pointers 
+        for cont in root.direct_pointer{ // <- todo, support large directories
+            // if this is 0, then that means the pointer is nullptr and we are done
+            if cont != 0 {
+                let directory = unsafe { 
+                    &*(self.blocks[cont as usize - self.block_offset].as_ptr() as *const NulStr)
+                };
+                ret.push(directory);
+            }
+        } 
+        Ok(ret)
     }
 
     pub fn ls(&self, dirs: Vec<(usize, &NulStr)>, command: String) -> Option<()> {
@@ -346,16 +348,17 @@ impl Ext2 {
                     println!("not a file: {}", paths);
                     return None;
                 } else {
-                    let s: Option<&[u8]> = match self.read_file_inode(possible_inode.unwrap()) {
-                        Ok(file_data) => Some(file_data),
-                        Err(_) => None,
+                    let file_contents: Vec<&NulStr> = match self.read_file_inode(possible_inode.unwrap()) {
+                        Ok(file_data) => file_data,
+                        Err(_) => {
+                            println!("unable to cat file: {}", paths);
+                            return None;
+                        },
                     };
-                    if s.is_none() {
-                        println!("unable to cat file: {}", paths);
-                        return None;
-                    } else {
-                        println!("{}", str::from_utf8(s.unwrap()).unwrap());
-                    }
+
+                   for cont in &file_contents {
+                        print!("{}\t", cont);
+                   }
                 }
             }
         }
