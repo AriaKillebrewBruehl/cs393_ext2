@@ -243,11 +243,11 @@ impl Ext2 {
                     }
                 }
             }
-        } return Some(possible_inode);
+        }
+        return Some(possible_inode);
     }
 
-
-   pub fn read_file_inode(&self, inode: usize) -> std::io::Result<Vec<&NulStr>> {
+    pub fn read_file_inode(&self, inode: usize) -> std::io::Result<Vec<&NulStr>> {
         let mut ret = Vec::new();
         let root = self.get_inode(inode);
         // make sure we are reading a file
@@ -258,16 +258,17 @@ impl Ext2 {
             ));
         }
 
-        // we should go through all the direct pointers 
-        for cont in root.direct_pointer{ // <- todo, support large directories
+        // we should go through all the direct pointers
+        for cont in root.direct_pointer {
+            // <- todo, support large directories
             // if this is 0, then that means the pointer is nullptr and we are done
             if cont != 0 {
-                let directory = unsafe { 
+                let directory = unsafe {
                     &*(self.blocks[cont as usize - self.block_offset].as_ptr() as *const NulStr)
                 };
                 ret.push(directory);
             }
-        } 
+        }
         Ok(ret)
     }
 
@@ -329,6 +330,14 @@ impl Ext2 {
         }
     }
 
+    pub fn mkdir(&self, dirs: Vec<(usize, &NulStr)>, command: String) -> Option<()> {
+        // `mkdir childname`
+        // create a directory with the given name, add a link to cwd
+        // consider supporting `-p path/to_file` to create a path of directories
+        println!("mkdir not yet implemented");
+        return None;
+    }
+
     pub fn cat(&self, dirs: Vec<(usize, &NulStr)>, command: String) -> Option<()> {
         // `cat filename`
         // print the contents of filename to stdout
@@ -348,21 +357,45 @@ impl Ext2 {
                     println!("not a file: {}", paths);
                     return None;
                 } else {
-                    let file_contents: Vec<&NulStr> = match self.read_file_inode(possible_inode.unwrap()) {
-                        Ok(file_data) => file_data,
-                        Err(_) => {
-                            println!("unable to cat file: {}", paths);
-                            return None;
-                        },
-                    };
+                    let file_contents: Vec<&NulStr> =
+                        match self.read_file_inode(possible_inode.unwrap()) {
+                            Ok(file_data) => file_data,
+                            Err(_) => {
+                                println!("unable to cat file: {}", paths);
+                                return None;
+                            }
+                        };
 
-                   for cont in &file_contents {
+                    for cont in &file_contents {
                         print!("{}\t", cont);
-                   }
+                    }
                 }
             }
         }
         return Some(());
+    }
+
+    pub fn rm(&self, dirs: Vec<(usize, &NulStr)>, command: String) -> Option<()> {
+        // `rm target`
+        // unlink a file or empty directory
+        println!("rm not yet implemented");
+        return None;
+    }
+
+    pub fn mount(&self, dirs: Vec<(usize, &NulStr)>, command: String) -> Option<()> {
+        // `mount host_filename mountpoint`
+        // mount an ext2 filesystem over an existing empty directory
+        println!("mount not yet implemented");
+        return None;
+    }
+
+    pub fn link(&self, dirs: Vec<(usize, &NulStr)>, command: String) -> Option<()> {
+        // `link arg_1 arg_2`
+        // create a hard link from arg_1 to arg_2
+        // consider what to do if arg2 does- or does-not end in "/"
+        // and/or if arg2 is an existing directory name
+        println!("link not yet implemented");
+        return None;
     }
 }
 
@@ -382,6 +415,7 @@ impl fmt::Debug for Inode {
 }
 fn main() -> Result<()> {
     let disk = include_bytes!("../myfs.ext2");
+    // let disk = include_bytes!("../largefs.ext2");
     let start_addr: usize = disk.as_ptr() as usize;
     let ext2 = Ext2::new(&disk[..], start_addr);
 
@@ -413,10 +447,10 @@ fn main() -> Result<()> {
                     current_working_inode = possible_working_inode.unwrap();
                 }
             } else if line.starts_with("mkdir") {
-                // `mkdir childname`
-                // create a directory with the given name, add a link to cwd
-                // consider supporting `-p path/to_file` to create a path of directories
-                println!("mkdir not yet implemented");
+                let success = ext2.mkdir(dirs, line);
+                if success.is_none() {
+                    println!("unable to create directory in mkdir");
+                }
             } else if line.starts_with("cat") {
                 let success = ext2.cat(dirs, line);
                 if success.is_none() {
@@ -424,25 +458,26 @@ fn main() -> Result<()> {
                 }
                 // println!("cat not yet implemented");
             } else if line.starts_with("rm") {
-                // `rm target`
-                // unlink a file or empty directory
-                println!("rm not yet implemented");
+                let success = ext2.rm(dirs, line);
+                if success.is_none() {
+                    println!("unable to remove directory in rm");
+                }
             } else if line.starts_with("mount") {
-                // `mount host_filename mountpoint`
-                // mount an ext2 filesystem over an existing empty directory
-                println!("mount not yet implemented");
+                let success = ext2.mount(dirs, line);
+                if success.is_none() {
+                    println!("unable to mount directory in rm");
+                }
             } else if line.starts_with("link") {
-                // `link arg_1 arg_2`
-                // create a hard link from arg_1 to arg_2
-                // consider what to do if arg2 does- or does-not end in "/"
-                // and/or if arg2 is an existing directory name
-                println!("link not yet implemented");
+                let success = ext2.link(dirs, line);
+                if success.is_none() {
+                    println!("link to mount directory in rm");
+                }
             } else if line.starts_with("quit") || line.starts_with("exit") {
                 break;
-            } else {
-                println!("bye!");
-                break;
             }
+        } else {
+            println!("bye!");
+            break;
         }
     }
     Ok(())
