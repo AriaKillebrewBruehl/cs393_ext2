@@ -7,3 +7,6 @@
 # already existing elements were commented out
 
 #/target
+
+# largefs.ext2 is too large to commit 
+largefs.ext2
