@@ -389,7 +389,12 @@ impl Ext2 {
         return None;
     }
 
-    pub fn link(&self, dirs: Vec<(usize, &NulStr)>, command: String) -> Option<()> {
+    pub fn link(
+        &self,
+        current_working_inode: usize,
+        dirs: Vec<(usize, &NulStr)>,
+        command: String,
+    ) -> Option<()> {
         // `link arg_1 arg_2`
         // create a hard link from arg_1 to arg_2
         // consider what to do if arg2 does- or does-not end in "/"
@@ -404,13 +409,18 @@ impl Ext2 {
         let arg_1 = elts[1];
         let arg_2 = elts[2];
         // first make sure that arg_2 does in fact exist
-        let inode = self.follow_path(arg_2, dirs);
-        if inode.is_none() {
+        let inode_number = self.follow_path(arg_2, dirs);
+        if inode_number.is_none() {
             println!("unable to follow path to arg_2");
             return None;
         }
-        let possible_inode = self.get_inode(inode.unwrap());
-
+        // in parent directory of arg_1 we need to make a new directory entry with arg_1 that corresponds to the same inode number as arg_2
+        let inode = self.get_inode(inode_number.unwrap());
+        if inode.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
+            println!("linking a directory");
+        } else if inode.type_perm & TypePerm::FILE != TypePerm::FILE {
+            println!("linking a file");
+        }
         println!("link not yet implemented");
         return None;
     }
