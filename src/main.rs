@@ -397,7 +397,8 @@ impl Ext2 {
 
         let elts: Vec<&str> = command.split(' ').collect();
         if elts.len() != 3 {
-            println!("usage: link arg1 arg2");
+            println!("usage: link arg1 arg2 ...");
+            return None;
         }
 
         // first make sure that arg_2 does in fact exist
