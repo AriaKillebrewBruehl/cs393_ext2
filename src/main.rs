@@ -1,7 +1,9 @@
 #![feature(int_roundings)]
 
 mod structs;
-use crate::structs::{BlockGroupDescriptor, DirectoryEntry, Inode, Superblock, TypePerm};
+use crate::structs::{
+    BlockGroupDescriptor, DirectoryEntry, Inode, Superblock, TypeIndicator, TypePerm,
+};
 use null_terminated::NulStr;
 use rustyline::{DefaultEditor, Result};
 use std::collections::VecDeque;
@@ -272,7 +274,7 @@ impl Ext2 {
         Ok(ret)
     }
 
-    pub fn add_dir_entry(&self, inode: usize) -> std::io::Result(()) {
+    pub fn add_dir_entry(&self, inode: usize) -> std::io::Result<()> {
         return Ok(());
     }
 
@@ -409,23 +411,36 @@ impl Ext2 {
             println!("usage: link arg_1 arg_2 ...");
             return None;
         }
-        // for right now assume that arg_1 is not a path
+
         let arg_1 = elts[1];
+        // for right now assume that arg_2 is not a path
         let arg_2 = elts[2];
-        // first make sure that arg_2 does in fact exist
-        let inode_number = self.follow_path(arg_2, dirs);
+        // first make sure that arg_1 does in fact exist
+        let inode_number = self.follow_path(arg_1, dirs);
         if inode_number.is_none() {
-            println!("unable to follow path to arg_2");
+            println!("unable to follow path to arg_1");
             return None;
         }
         // in parent directory of arg_1 we need to make a new directory entry with arg_1 that corresponds to the same inode number as arg_2
         let inode = self.get_inode(inode_number.unwrap());
         let parent_directory = self.read_dir_inode(current_working_inode);
+        let test_string = parent_directory.unwrap().pop().unwrap().1;
+
+        let mut entry_type: TypeIndicator;
         if inode.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
-            println!("linking a directory");
+            entry_type = TypeIndicator::Directory;
         } else if inode.type_perm & TypePerm::FILE != TypePerm::FILE {
-            println!("linking a file");
+            entry_type = TypeIndicator::Regular;
         }
+
+        let directory_entry = DirectoryEntry {
+            inode: inode_number.unwrap() as u32,
+            entry_size: 0,
+            name_length: 0,
+            type_indicator: entry_type,
+            name: *test_string,
+        };
+
         println!("link not yet implemented");
         return None;
     }
@@ -500,7 +515,7 @@ fn main() -> Result<()> {
                     println!("unable to mount directory in rm");
                 }
             } else if line.starts_with("link") {
-                let success = ext2.link(dirs, line);
+                let success = ext2.link(current_working_inode, dirs, line);
                 if success.is_none() {
                     println!("link to mount directory in rm");
                 }
