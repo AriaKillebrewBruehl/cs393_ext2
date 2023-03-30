@@ -394,6 +394,14 @@ impl Ext2 {
         // create a hard link from arg_1 to arg_2
         // consider what to do if arg2 does- or does-not end in "/"
         // and/or if arg2 is an existing directory name
+
+        let elts: Vec<&str> = command.split(' ').collect();
+        if elts.len() != 3 {
+            println!("usage: link arg1 arg2");
+        }
+
+        // first make sure that arg_2 does in fact exist
+
         println!("link not yet implemented");
         return None;
     }
