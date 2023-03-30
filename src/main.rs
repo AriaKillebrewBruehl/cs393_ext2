@@ -397,11 +397,19 @@ impl Ext2 {
 
         let elts: Vec<&str> = command.split(' ').collect();
         if elts.len() != 3 {
-            println!("usage: link arg1 arg2 ...");
+            println!("usage: link arg_1 arg_2 ...");
             return None;
         }
-
+        // for right now assume that arg_1 is not a path
+        let arg_1 = elts[1];
+        let arg_2 = elts[2];
         // first make sure that arg_2 does in fact exist
+        let inode = self.follow_path(arg_2, dirs);
+        if inode.is_none() {
+            println!("unable to follow path to arg_2");
+            return None;
+        }
+        let possible_inode = self.get_inode(inode.unwrap());
 
         println!("link not yet implemented");
         return None;
