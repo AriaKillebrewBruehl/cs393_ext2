@@ -272,6 +272,10 @@ impl Ext2 {
         Ok(ret)
     }
 
+    pub fn add_dir_entry(&self, inode: usize) -> std::io::Result(()) {
+        return Ok(());
+    }
+
     pub fn ls(&self, dirs: Vec<(usize, &NulStr)>, command: String) -> Option<()> {
         let elts: Vec<&str> = command.split(' ').collect();
         if elts.len() == 1 {
@@ -416,6 +420,7 @@ impl Ext2 {
         }
         // in parent directory of arg_1 we need to make a new directory entry with arg_1 that corresponds to the same inode number as arg_2
         let inode = self.get_inode(inode_number.unwrap());
+        let parent_directory = self.read_dir_inode(current_working_inode);
         if inode.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
             println!("linking a directory");
         } else if inode.type_perm & TypePerm::FILE != TypePerm::FILE {
