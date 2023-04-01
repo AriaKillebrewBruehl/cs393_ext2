@@ -116,20 +116,53 @@ impl Ext2 {
         &inode_table[index]
     }
 
-    pub fn read_dir_entry_block(&self, ret_vec: &mut Vec<(usize, &NulStr)>, direct_pointer: *const u8, whole_size: u64) -> std::io::Result<isize> {
+    pub fn read_dir_entry_block(
+        &self,
+        ret_vec: &mut Vec<(usize, &NulStr)>,
+        direct_pointer: *const u8,
+        whole_size: u64,
+    ) -> std::io::Result<isize> {
         let mut byte_offset: isize = 0;
-    
+
         // loop over direct pointers
         let mut i = 0;
         while byte_offset < whole_size as isize {
             // <- todo, support large directories
-            let directory = unsafe { &*(direct_pointer.offset(byte_offset) as *const DirectoryEntry) };
+            let directory =
+                unsafe { &*(direct_pointer.offset(byte_offset) as *const DirectoryEntry) };
             // println!("{:?}", directory);
             byte_offset += directory.entry_size as isize;
             ret_vec.push((directory.inode as usize, &directory.name));
-            i = i+1;
+            i = i + 1;
         }
         Ok(byte_offset)
+    }
+
+    pub fn read_ind_entry_block(
+        &self,
+        bytes_read: isize,
+        ret_vec: &mut Vec<(usize, &NulStr)>,
+        ind_pointer: *const u8,
+        whole_size: u64,
+    ) -> std::io::Result<isize> {
+        // read in what that pointer points to, block of direct pointers
+        let mut bytes = bytes_read;
+        let mut ind_ptr_offset = 0;
+        while bytes < whole_size as isize {
+            // get our next ptr to a data block
+            let dir_block_ptr = unsafe { (ind_pointer.offset(ind_ptr_offset)) };
+            // read that data
+            let ret: isize = match self.read_dir_entry_block(ret_vec, dir_block_ptr, whole_size) {
+                Ok(dir_listing) => dir_listing,
+                Err(_) => {
+                    panic!("OOps");
+                }
+            };
+            bytes += ret;
+            ind_ptr_offset += 32;
+        }
+
+        Ok(bytes)
     }
 
     pub fn read_dir_inode(&self, inode: usize) -> std::io::Result<Vec<(usize, &NulStr)>> {
@@ -142,17 +175,43 @@ impl Ext2 {
             ));
         }
 
-        let entry_ptr = self.blocks[root.direct_pointer[0] as usize - self.block_offset].as_ptr();
-        let whole_size: u64 = ((root.size_high as u64 )<< 32)  + root.size_low as u64;
+        let whole_size: u64 = ((root.size_high as u64) << 32) + root.size_low as u64;
+        let mut i = 0;
+        let mut bytes_read: isize = 0;
+        // get all the direct pointer blocks
+        while i < 12 && bytes_read < whole_size as isize {
+            let entry_ptr =
+                self.blocks[root.direct_pointer[i] as usize - self.block_offset].as_ptr();
+            let ret: isize = match self.read_dir_entry_block(&mut ret_vec, entry_ptr, whole_size) {
+                Ok(dir_listing) => dir_listing,
+                Err(_) => {
+                    panic!("OOps");
+                }
+            };
+            bytes_read += ret;
+            i += 1;
+        }
+        if root.indirect_pointer == 0 {
+            // if there is no indirect ptr
+            return Ok(ret_vec);
+        }
+        let ind_entry_ptr =
+            self.blocks[root.indirect_pointer as usize - self.block_offset].as_ptr();
+        if bytes_read < whole_size as isize {
+            let ret: isize = match self.read_ind_entry_block(
+                bytes_read,
+                &mut ret_vec,
+                ind_entry_ptr,
+                whole_size,
+            ) {
+                Ok(dir_listing) => dir_listing,
+                Err(_) => {
+                    panic!("OOps");
+                }
+            };
+            bytes_read += ret;
+        }
 
-        
-
-        let ret: isize = match self.read_dir_entry_block( &mut ret_vec, entry_ptr, whole_size){
-            Ok(dir_listing) => dir_listing,
-            Err(_) => {
-                panic!("OOps");
-            }
-        };
         Ok(ret_vec)
     }
 
