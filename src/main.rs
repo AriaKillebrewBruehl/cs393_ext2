@@ -116,8 +116,24 @@ impl Ext2 {
         &inode_table[index]
     }
 
+    pub fn read_dir_entry_block(&self, ret_vec: &mut Vec<(usize, &NulStr)>, direct_pointer: *const u8, whole_size: u64) -> std::io::Result<isize> {
+        let mut byte_offset: isize = 0;
+    
+        // loop over direct pointers
+        let mut i = 0;
+        while byte_offset < whole_size as isize {
+            // <- todo, support large directories
+            let directory = unsafe { &*(direct_pointer.offset(byte_offset) as *const DirectoryEntry) };
+            // println!("{:?}", directory);
+            byte_offset += directory.entry_size as isize;
+            ret_vec.push((directory.inode as usize, &directory.name));
+            i = i+1;
+        }
+        Ok(byte_offset)
+    }
+
     pub fn read_dir_inode(&self, inode: usize) -> std::io::Result<Vec<(usize, &NulStr)>> {
-        let mut ret = Vec::new();
+        let mut ret_vec = Vec::new();
         let root = self.get_inode(inode);
         if root.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
             return Err(std::io::Error::new(
@@ -125,21 +141,19 @@ impl Ext2 {
                 "inode is not a directory",
             ));
         }
-        // println!("in read_dir_inode, #{} : {:?}", inode, root);
-        // println!(
-        //     "following direct pointer to data block: {}",
-        //     root.direct_pointer[0]
-        // );
+
         let entry_ptr = self.blocks[root.direct_pointer[0] as usize - self.block_offset].as_ptr();
-        let mut byte_offset: isize = 0;
-        while byte_offset < root.size_low as isize {
-            // <- todo, support large directories
-            let directory = unsafe { &*(entry_ptr.offset(byte_offset) as *const DirectoryEntry) };
-            // println!("{:?}", directory);
-            byte_offset += directory.entry_size as isize;
-            ret.push((directory.inode as usize, &directory.name));
-        }
-        Ok(ret)
+        let whole_size: u64 = ((root.size_high as u64 )<< 32)  + root.size_low as u64;
+
+        
+
+        let ret: isize = match self.read_dir_entry_block( &mut ret_vec, entry_ptr, whole_size){
+            Ok(dir_listing) => dir_listing,
+            Err(_) => {
+                panic!("OOps");
+            }
+        };
+        Ok(ret_vec)
     }
 
     // lifetime of the return value needs to be the same as the lifetime of path
@@ -433,13 +447,13 @@ impl Ext2 {
             entry_type = TypeIndicator::Regular;
         }
 
-        let directory_entry = DirectoryEntry {
-            inode: inode_number.unwrap() as u32,
-            entry_size: 0,
-            name_length: 0,
-            type_indicator: entry_type,
-            name: *test_string,
-        };
+        // let directory_entry = DirectoryEntry {
+        //     inode: inode_number.unwrap() as u32,
+        //     entry_size: 0,
+        //     name_length: 0,
+        //     type_indicator: entry_type,
+        //     name: *test_string,
+        // };
 
         println!("link not yet implemented");
         return None;
