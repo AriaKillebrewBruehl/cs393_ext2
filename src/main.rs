@@ -534,8 +534,16 @@ impl fmt::Debug for Inode {
     }
 }
 fn main() -> Result<()> {
-    let disk = include_bytes!("../myfs.ext2");
-    // let disk = include_bytes!("../largefs.ext2");
+    // let disk = include_bytes!("../myfs.ext2");
+    let disk = include_bytes!("../largefs.ext2");
+    // maybe load this at runtime rather than have this be a byte array at compile time
+    // create a new shell command 'mount' that takes a file name and reads the file into one big string
+    // first query the filesystem how big is the file then allocate a new things
+    // option ptr to this buffer, once its not none you can start operating on the pointer there
+    // look at how to read a whole filer into memory in rust
+    // want type that you are reading into to be the type that you are reading in
+    // just want the raw bytes
+    // we actually don't need this to be that big
     let start_addr: usize = disk.as_ptr() as usize;
     let ext2 = Ext2::new(&disk[..], start_addr);
 
