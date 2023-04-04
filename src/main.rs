@@ -215,6 +215,48 @@ impl Ext2 {
         Ok(ret_vec)
     }
 
+    pub fn insert_dir_entry(&self, inode: usize) -> std::io::Result<*const u8> {
+        let root = self.get_inode(inode);
+        if root.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "inode is not a directory",
+            ));
+        }
+        let mut whole_size: u64 = ((root.size_high as u64) << 32) + root.size_low as u64;
+        // the number of bytes held by the direct block pointers
+        let direct_data: u64 = 12 * self.block_size as u64;
+        if whole_size > direct_data {
+            whole_size -= direct_data;
+        } else {
+            let blk = (whole_size / self.block_size as u64) as usize;
+            let space = whole_size % self.block_size as u64;
+            // if there isn't enough space
+            let entry_ptr =
+                self.blocks[root.direct_pointer[blk] as usize - self.block_offset].as_ptr();
+            let spot = unsafe { entry_ptr.offset(space as isize) };
+            return Ok(spot);
+        }
+        // the number of bytes held by the indirect block pointers
+        let indirect_data: u64 = ((self.block_size / 32) * self.block_size) as u64;
+        if whole_size > indirect_data {
+            whole_size -= indirect_data;
+        } else {
+            // there is some math from systems i'm forgetting that needs to be worked out for this part...
+            let blk = (whole_size / self.block_size as u64) as usize;
+            let space = whole_size % self.block_size as u64;
+            // if there isn't enough space
+            let ind_entry_ptr =
+                self.blocks[root.indirect_pointer as usize - self.block_offset].as_ptr();
+            let ind_ptr = unsafe { ind_entry_ptr.offset(blk as isize) };
+
+            let spot = unsafe { ind_ptr.offset(space as isize) };
+            return Ok(spot);
+        }
+        // the number of bytes held by the doubly indirect block pointers
+        return Ok(self.blocks[root.direct_pointer[0] as usize - self.block_offset].as_ptr());
+    }
+
     // lifetime of the return value needs to be the same as the lifetime of path
     pub fn follow_path(&self, path: &str, dirs: Vec<(usize, &NulStr)>) -> Option<usize> {
         let mut candidate_directories: VecDeque<&str> = path.split('/').collect();
