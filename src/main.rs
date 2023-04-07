@@ -11,6 +11,7 @@ use std::collections::VecDeque;
 use std::fmt;
 use std::io::Bytes;
 use std::mem;
+use std::slice;
 use std::str;
 use std::vec;
 use uuid::Uuid;
@@ -129,12 +130,8 @@ impl Ext2 {
         let bytes_to_read = cmp::min(self.block_size, (whole_size as usize - bytes_read as usize));
         // read all the bytes in that block
         let mut i = 0;
-        while i < bytes_to_read as isize {
-            // <- todo, support large directories
-            let char = unsafe { (*direct_pointer.offset(i) as u8) };
-            contiguous_data.push(char);
-            i = i + 1;
-        }
+        let new_data = unsafe { slice::from_raw_parts(direct_pointer, bytes_to_read) };
+        contiguous_data.extend_from_slice(new_data);
         Ok(bytes_to_read as isize)
     }
 
