@@ -6,10 +6,13 @@ use crate::structs::{
 };
 use null_terminated::NulStr;
 use rustyline::{DefaultEditor, Result};
+use std::cmp;
 use std::collections::VecDeque;
 use std::fmt;
+use std::io::Bytes;
 use std::mem;
 use std::str;
+use std::vec;
 use uuid::Uuid;
 use zerocopy::ByteSlice;
 
@@ -118,54 +121,54 @@ impl Ext2 {
 
     pub fn read_dir_entry_block(
         &self,
-        ret_vec: &mut Vec<(usize, &NulStr)>,
+        contiguous_data: &mut Vec<u8>,
         direct_pointer: *const u8,
         whole_size: u64,
+        bytes_read: u64,
     ) -> std::io::Result<isize> {
-        let mut byte_offset: isize = 0;
-
-        // loop over direct pointers
+        let bytes_to_read = cmp::min(self.block_size, (whole_size as usize - bytes_read as usize));
+        // read all the bytes in that block
         let mut i = 0;
-        while byte_offset < whole_size as isize {
+        while i < bytes_to_read as isize {
             // <- todo, support large directories
-            let directory =
-                unsafe { &*(direct_pointer.offset(byte_offset) as *const DirectoryEntry) };
-            // println!("{:?}", directory);
-            byte_offset += directory.entry_size as isize;
-            ret_vec.push((directory.inode as usize, &directory.name));
+            let char = unsafe { (*direct_pointer.offset(i) as u8) };
+            contiguous_data.push(char);
             i = i + 1;
         }
-        Ok(byte_offset)
+        Ok(bytes_to_read as isize)
     }
 
-    pub fn read_ind_entry_block(
-        &self,
-        bytes_read: isize,
-        ret_vec: &mut Vec<(usize, &NulStr)>,
-        ind_pointer: *const u8,
-        whole_size: u64,
-    ) -> std::io::Result<isize> {
-        // read in what that pointer points to, block of direct pointers
-        let mut bytes = bytes_read;
-        let mut ind_ptr_offset = 0;
-        while bytes < whole_size as isize {
-            // get our next ptr to a data block
-            let dir_block_ptr = unsafe { (ind_pointer.offset(ind_ptr_offset)) };
-            // read that data
-            let ret: isize = match self.read_dir_entry_block(ret_vec, dir_block_ptr, whole_size) {
-                Ok(dir_listing) => dir_listing,
-                Err(_) => {
-                    panic!("OOps");
-                }
-            };
-            bytes += ret;
-            ind_ptr_offset += 32;
-        }
+    // pub fn read_ind_entry_block(
+    //     &self,
+    //     bytes_read: isize,
+    //     ret_vec: &mut Vec<(usize, &NulStr)>,
+    //     ind_pointer: *const u8,
+    //     whole_size: u64,
+    // ) -> std::io::Result<isize> {
+    //     // read in what that pointer points to, block of direct pointers
+    //     let mut bytes = bytes_read;
+    //     let mut ind_ptr_offset = 0;
+    //     while bytes < whole_size as isize {
+    //         // get our next ptr to a data block
+    //         let dir_block_ptr = unsafe { (ind_pointer.offset(ind_ptr_offset)) };
+    //         // read that data
+    //         let ret: isize = match self.read_dir_entry_block(ret_vec, dir_block_ptr, whole_size) {
+    //             Ok(dir_listing) => dir_listing,
+    //             Err(_) => {
+    //                 panic!("OOps");
+    //             }
+    //         };
+    //         bytes += ret;
+    //         ind_ptr_offset += 32;
+    //     }
 
-        Ok(bytes)
-    }
+    //     Ok(bytes)
+    // }
 
     pub fn read_dir_inode(&self, inode: usize) -> std::io::Result<Vec<(usize, &NulStr)>> {
+        // copy everything into a new whole part of memory
+        // then read that nice whole block
+        // then break apart and put back
         let mut ret_vec = Vec::new();
         let root = self.get_inode(inode);
         if root.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
@@ -176,13 +179,19 @@ impl Ext2 {
         }
 
         let whole_size: u64 = ((root.size_high as u64) << 32) + root.size_low as u64;
+        let mut contiguous_data: Vec<u8> = Vec::new();
         let mut i = 0;
         let mut bytes_read: isize = 0;
         // get all the direct pointer blocks
         while i < 12 && bytes_read < whole_size as isize {
             let entry_ptr =
                 self.blocks[root.direct_pointer[i] as usize - self.block_offset].as_ptr();
-            let ret: isize = match self.read_dir_entry_block(&mut ret_vec, entry_ptr, whole_size) {
+            let ret: isize = match self.read_dir_entry_block(
+                &mut contiguous_data,
+                entry_ptr,
+                whole_size,
+                bytes_read as u64,
+            ) {
                 Ok(dir_listing) => dir_listing,
                 Err(_) => {
                     panic!("OOps");
@@ -191,26 +200,36 @@ impl Ext2 {
             bytes_read += ret;
             i += 1;
         }
-        if root.indirect_pointer == 0 {
-            // if there is no indirect ptr
-            return Ok(ret_vec);
+
+        let data_ptr = contiguous_data.as_ptr();
+        let mut byte_offset: isize = 0;
+        while byte_offset < whole_size as isize {
+            let directory = unsafe { &*(data_ptr.offset(byte_offset) as *const DirectoryEntry) };
+            byte_offset += directory.entry_size as isize;
+            ret_vec.push((directory.inode as usize, &directory.name));
         }
-        let ind_entry_ptr =
-            self.blocks[root.indirect_pointer as usize - self.block_offset].as_ptr();
-        if bytes_read < whole_size as isize {
-            let ret: isize = match self.read_ind_entry_block(
-                bytes_read,
-                &mut ret_vec,
-                ind_entry_ptr,
-                whole_size,
-            ) {
-                Ok(dir_listing) => dir_listing,
-                Err(_) => {
-                    panic!("OOps");
-                }
-            };
-            bytes_read += ret;
-        }
+
+        // if root.indirect_pointer == 0 {
+        //     // if there is no indirect ptr
+        //     // rebuild ret_vec from contig_data
+
+        // }
+        // let ind_entry_ptr =
+        //     self.blocks[root.indirect_pointer as usize - self.block_offset].as_ptr();
+        // if bytes_read < whole_size as isize {
+        //     let ret: isize = match self.read_ind_entry_block(
+        //         bytes_read,
+        //         &mut ret_vec,
+        //         ind_entry_ptr,
+        //         whole_size,
+        //     ) {
+        //         Ok(dir_listing) => dir_listing,
+        //         Err(_) => {
+        //             panic!("OOps");
+        //         }
+        //     };
+        //     bytes_read += ret;
+        // }
 
         Ok(ret_vec)
     }
@@ -518,8 +537,8 @@ impl fmt::Debug for Inode {
     }
 }
 fn main() -> Result<()> {
-    // let disk = include_bytes!("../myfs.ext2");
-    let disk = include_bytes!("../largefs.ext2");
+    let disk = include_bytes!("../myfs.ext2");
+    // let disk = include_bytes!("../largefs.ext2");
     // maybe load this at runtime rather than have this be a byte array at compile time
     // create a new shell command 'mount' that takes a file name and reads the file into one big string
     // first query the filesystem how big is the file then allocate a new things
