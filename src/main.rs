@@ -162,11 +162,7 @@ impl Ext2 {
     //     Ok(bytes)
     // }
 
-    pub fn read_dir_inode(&self, inode: usize) -> std::io::Result<Vec<(usize, &NulStr)>> {
-        // copy everything into a new whole part of memory
-        // then read that nice whole block
-        // then break apart and put back
-        let mut ret_vec = Vec::new();
+    pub fn contiguous_data_from_dir_inode(&self, inode: usize) -> std::io::Result<Vec<u8>> {
         let root = self.get_inode(inode);
         if root.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
             return Err(std::io::Error::new(
@@ -197,6 +193,49 @@ impl Ext2 {
             bytes_read += ret;
             i += 1;
         }
+
+        return Ok(contiguous_data);
+    }
+
+    pub fn read_dir_inode(&self, inode: usize) -> std::io::Result<Vec<(usize, &NulStr)>> {
+        // copy everything into a new whole part of memory
+        // then read that nice whole block
+        // then break apart and put back
+        let mut ret_vec = Vec::new();
+        let contiguous_data = match self.contiguous_data_from_dir_inode(inode) {
+            Ok(data_vector) => data_vector,
+            Err(_) => panic!("Whoopsies"),
+        };
+        let root = self.get_inode(inode);
+        if root.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "inode is not a directory",
+            ));
+        }
+
+        let whole_size: u64 = ((root.size_high as u64) << 32) + root.size_low as u64;
+        // let mut contiguous_data: Vec<u8> = Vec::new();
+        // let mut i = 0;
+        // let mut bytes_read: isize = 0;
+        // // get all the direct pointer blocks
+        // while i < 12 && bytes_read < whole_size as isize {
+        //     let entry_ptr =
+        //         self.blocks[root.direct_pointer[i] as usize - self.block_offset].as_ptr();
+        //     let ret: isize = match self.read_dir_entry_block(
+        //         &mut contiguous_data,
+        //         entry_ptr,
+        //         whole_size,
+        //         bytes_read as u64,
+        //     ) {
+        //         Ok(dir_listing) => dir_listing,
+        //         Err(_) => {
+        //             panic!("OOps");
+        //         }
+        //     };
+        //     bytes_read += ret;
+        //     i += 1;
+        // }
 
         let data_ptr = contiguous_data.as_ptr();
         let mut byte_offset: isize = 0;
