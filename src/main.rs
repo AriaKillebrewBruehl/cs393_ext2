@@ -4,10 +4,13 @@ mod structs;
 use crate::structs::{
     BlockGroupDescriptor, DirectoryEntry, Inode, Superblock, TypeIndicator, TypePerm,
 };
+use null_terminated::str0;
+use null_terminated::Nul;
 use null_terminated::NulStr;
 use rustyline::{DefaultEditor, Result};
 use std::cmp;
 use std::collections::VecDeque;
+use std::ffi::IntoStringError;
 use std::fmt;
 use std::io::Bytes;
 use std::mem;
@@ -487,6 +490,35 @@ impl Ext2 {
         // `mkdir childname`
         // create a directory with the given name, add a link to cwd
         // consider supporting `-p path/to_file` to create a path of directories
+        let elts: Vec<&str> = command.split(' ').collect();
+        if elts.len() == 1 {
+            print!("must pass file to mkdir");
+        }
+        let paths = elts[1];
+        let name = elts[2];
+
+        static s: &'static Nul<u8> = str0!("name");
+        let n = NulStr(*s);
+        let possible_inode = self.follow_path(paths, dirs).unwrap();
+
+        let entry_size = mem::size_of::<u32>()
+            + mem::size_of::<u16>()
+            + mem::size_of::<u8>()
+            + mem::size_of::<TypeIndicator>()
+            + s.len()
+            + 1;
+
+        let tmp = unsafe {
+            DirectoryEntry {
+                inode: possible_inode as u32,
+                entry_size: entry_size as u16,
+                name_length: s.len() as u8,
+                type_indicator: TypeIndicator::Directory,
+                name: n,
+            }
+        };
+
+        self.insert_dir_entry(possible_inode, &tmp);
 
         println!("mkdir not yet implemented");
         return None;
