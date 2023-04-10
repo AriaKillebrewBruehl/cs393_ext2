@@ -255,7 +255,7 @@ impl Ext2 {
     pub fn write_dir_entry_block(
         &self,
         contiguous_data: &mut Vec<u8>,
-        direct_pointer: *const u8,
+        direct_pointer: *mut u8,
         whole_size: u64,
         bytes_written: u64,
     ) -> std::io::Result<isize> {
@@ -273,6 +273,14 @@ impl Ext2 {
         };
 
         // then write vec_to_write to self.blocks
+        let offset = 0;
+        for i in 0..vec_to_write.len() {
+            unsafe {
+                direct_pointer
+                    .offset(offset)
+                    .write_bytes(contiguous_data[(bytes_written + i as u64) as usize], 1)
+            }
+        }
         return Ok(bytes_to_write as isize);
     }
 
@@ -300,7 +308,7 @@ impl Ext2 {
         // what if you need to allocate a new block
         while i < 12 && bytes_written < whole_size as isize {
             let entry_ptr =
-                self.blocks[root.direct_pointer[i] as usize - self.block_offset].as_ptr();
+                self.blocks[root.direct_pointer[i] as usize - self.block_offset].as_mut_ptr();
             let ret: isize =
                 match self.write_dir_entry_block(data, entry_ptr, whole_size, bytes_written as u64)
                 {
