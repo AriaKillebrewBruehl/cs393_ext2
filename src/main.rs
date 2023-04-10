@@ -10,6 +10,7 @@ use null_terminated::NulStr;
 use rustyline::{DefaultEditor, Result};
 use std::cmp;
 use std::collections::VecDeque;
+use std::ffi::CString;
 use std::ffi::IntoStringError;
 use std::fmt;
 use std::io::Bytes;
@@ -296,6 +297,7 @@ impl Ext2 {
         let mut i = 0;
         let mut bytes_written: isize = 0;
         // write to all the direct pointer blocks
+        // what if you need to allocate a new block
         while i < 12 && bytes_written < whole_size as isize {
             let entry_ptr =
                 self.blocks[root.direct_pointer[i] as usize - self.block_offset].as_ptr();
@@ -497,24 +499,26 @@ impl Ext2 {
         let paths = elts[1];
         let name = elts[2];
 
-        static s: &'static Nul<u8> = str0!("name");
-        let n = NulStr(*s);
+        let s = name.as_ptr();
+        let n = unsafe { NulStr::new_unchecked(s) };
+
         let possible_inode = self.follow_path(paths, dirs).unwrap();
 
         let entry_size = mem::size_of::<u32>()
             + mem::size_of::<u16>()
             + mem::size_of::<u8>()
             + mem::size_of::<TypeIndicator>()
-            + s.len()
+            + name.len()
             + 1;
 
+        // maybe manually put this guy in go to that point in memory and put all the gosh darn parts in
         let tmp = unsafe {
             DirectoryEntry {
                 inode: possible_inode as u32,
                 entry_size: entry_size as u16,
-                name_length: s.len() as u8,
+                name_length: (name.len() + 1) as u8,
                 type_indicator: TypeIndicator::Directory,
-                name: n,
+                name: *n,
             }
         };
 
