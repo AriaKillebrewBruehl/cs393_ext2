@@ -10,8 +10,6 @@ use null_terminated::NulStr;
 use rustyline::{DefaultEditor, Result};
 use std::cmp;
 use std::collections::VecDeque;
-use std::ffi::CString;
-use std::ffi::IntoStringError;
 use std::fmt;
 use std::io::Bytes;
 use std::mem;
@@ -19,6 +17,7 @@ use std::slice;
 use std::str;
 use std::vec;
 use uuid::Uuid;
+use zerocopy::AsBytes;
 use zerocopy::ByteSlice;
 
 #[repr(C)]
@@ -307,16 +306,19 @@ impl Ext2 {
         // write to all the direct pointer blocks
         // what if you need to allocate a new block
         while i < 12 && bytes_written < whole_size as isize {
-            let entry_ptr =
-                self.blocks[root.direct_pointer[i] as usize - self.block_offset].as_mut_ptr();
-            let ret: isize =
-                match self.write_dir_entry_block(data, entry_ptr, whole_size, bytes_written as u64)
-                {
-                    Ok(dir_listing) => dir_listing,
-                    Err(_) => {
-                        panic!("OOps");
-                    }
-                };
+            let entry_ptr = self.blocks[root.direct_pointer[i] as usize - self.block_offset];
+            let entry_ptr_mut = entry_ptr.as_mut_ptr();
+            let ret: isize = match self.write_dir_entry_block(
+                data,
+                entry_ptr_mut,
+                whole_size,
+                bytes_written as u64,
+            ) {
+                Ok(dir_listing) => dir_listing,
+                Err(_) => {
+                    panic!("OOps");
+                }
+            };
             bytes_written += ret;
             i += 1;
         }
@@ -324,16 +326,29 @@ impl Ext2 {
         return Ok(());
     }
 
-    pub fn insert_dir_entry(&self, inode: usize, entry: &DirectoryEntry) -> std::io::Result<()> {
+    pub fn insert_dir_entry(&self, inode: usize, name: &str) -> std::io::Result<()> {
         // read in data from directory entry
         let mut contiguous_data = match self.contiguous_data_from_dir_inode(inode) {
             Ok(data_vector) => data_vector,
             Err(_) => panic!("Whoopsies"),
         };
-        // add the new directory entry to the end
-        let entry_ptr = (entry as *const DirectoryEntry) as *const u8;
-        let entry_vec = unsafe { std::slice::from_raw_parts(entry_ptr, entry.entry_size as usize) };
-        contiguous_data.extend_from_slice(entry_vec);
+        // add the new directory entry to the end as bytes
+        contiguous_data.extend_from_slice(inode.as_bytes());
+        let entry_size = mem::size_of::<u32>()
+            + mem::size_of::<u16>()
+            + mem::size_of::<u8>()
+            + mem::size_of::<TypeIndicator>()
+            + name.len()
+            + 1;
+        contiguous_data.extend_from_slice(entry_size.as_bytes());
+        let name_size = name.len() + 1;
+        contiguous_data.extend(name_size.as_bytes());
+        let s = name.as_ptr();
+        let n = unsafe { NulStr::new_unchecked(s) };
+        contiguous_data.push(2);
+        contiguous_data.extend_from_slice(name.as_bytes());
+        let null = "\0";
+        contiguous_data.extend_from_slice(null.as_bytes());
 
         let root = self.get_inode(inode);
         if root.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
@@ -344,7 +359,7 @@ impl Ext2 {
         }
 
         // write data back out
-        self.write_dir_inode(inode, &mut contiguous_data, entry.entry_size);
+        self.write_dir_inode(inode, &mut contiguous_data, entry_size as u16);
 
         // let whole_size: u64 = ((root.size_high as u64) << 32) + root.size_low as u64;
 
@@ -520,17 +535,17 @@ impl Ext2 {
             + 1;
 
         // maybe manually put this guy in go to that point in memory and put all the gosh darn parts in
-        let tmp = unsafe {
-            DirectoryEntry {
-                inode: possible_inode as u32,
-                entry_size: entry_size as u16,
-                name_length: (name.len() + 1) as u8,
-                type_indicator: TypeIndicator::Directory,
-                name: *n,
-            }
-        };
+        // let tmp = unsafe {
+        //     DirectoryEntry {
+        //         inode: possible_inode as u32,
+        //         entry_size: entry_size as u16,
+        //         name_length: (name.len() + 1) as u8,
+        //         type_indicator: TypeIndicator::Directory,
+        //         name: *n,
+        //     }
+        // };
 
-        self.insert_dir_entry(possible_inode, &tmp);
+        self.insert_dir_entry(possible_inode, name);
 
         println!("mkdir not yet implemented");
         return None;
