@@ -4,18 +4,14 @@ mod structs;
 use crate::structs::{
     BlockGroupDescriptor, DirectoryEntry, Inode, Superblock, TypeIndicator, TypePerm,
 };
-use null_terminated::str0;
-use null_terminated::Nul;
 use null_terminated::NulStr;
 use rustyline::{DefaultEditor, Result};
 use std::cmp;
 use std::collections::VecDeque;
 use std::fmt;
-use std::io::Bytes;
 use std::mem;
 use std::slice;
 use std::str;
-use std::vec;
 use uuid::Uuid;
 use zerocopy::AsBytes;
 use zerocopy::ByteSlice;
