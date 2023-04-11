@@ -294,6 +294,8 @@ impl Ext2 {
         }
 
         let mut whole_size: u64 = ((root.size_high as u64) << 32) + root.size_low as u64;
+        println!("{}", whole_size as usize + new_entry_size as usize);
+        println!("{}", data.len());
         assert!(whole_size as usize + new_entry_size as usize == data.len());
         whole_size += new_entry_size as u64;
 
@@ -303,10 +305,10 @@ impl Ext2 {
         // what if you need to allocate a new block
         while i < 12 && bytes_written < whole_size as isize {
             let entry_ptr = self.blocks[root.direct_pointer[i] as usize - self.block_offset];
-            let entry_ptr_mut = entry_ptr.as_mut_ptr();
+            let entry_ptr_mut = entry_ptr.as_ptr();
             let ret: isize = match self.write_dir_entry_block(
                 data,
-                entry_ptr_mut,
+                entry_ptr_mut as *mut u8,
                 whole_size,
                 bytes_written as u64,
             ) {
@@ -328,24 +330,42 @@ impl Ext2 {
             Ok(data_vector) => data_vector,
             Err(_) => panic!("Whoopsies"),
         };
+
+        println!("Here is the contiguous data len{}", contiguous_data.len());
         // add the new directory entry to the end as bytes
-        contiguous_data.extend_from_slice(inode.as_bytes());
+        // why tf is inode being cast as usize all the time : P
+        contiguous_data.extend_from_slice((inode as u32).as_bytes());
         let entry_size = mem::size_of::<u32>()
             + mem::size_of::<u16>()
             + mem::size_of::<u8>()
             + mem::size_of::<TypeIndicator>()
             + name.len()
             + 1;
-        contiguous_data.extend_from_slice(entry_size.as_bytes());
+
+        println!("cont data after adding indoe : {}", contiguous_data.len());
+        println!("entry size (allegedly) :{} ", entry_size);
+        contiguous_data.extend_from_slice((entry_size as u16).as_bytes());
+        println!("cont data after adding size : {}", contiguous_data.len());
         let name_size = name.len() + 1;
-        contiguous_data.extend(name_size.as_bytes());
+        contiguous_data.extend((name_size as u8).as_bytes());
+        println!(
+            "cont data after adding name_size : {}",
+            contiguous_data.len()
+        );
         let s = name.as_ptr();
         let n = unsafe { NulStr::new_unchecked(s) };
         contiguous_data.push(2);
+        println!(
+            "cont data after adding Directory Enum : {}",
+            contiguous_data.len()
+        );
         contiguous_data.extend_from_slice(name.as_bytes());
+        println!("cont data after adding name : {}", contiguous_data.len());
         let null = "\0";
         contiguous_data.extend_from_slice(null.as_bytes());
+        println!("cont data after adding nullptr : {}", contiguous_data.len());
 
+        println!("cont data after adding entry : {}", contiguous_data.len());
         let root = self.get_inode(inode);
         if root.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
             return Err(std::io::Error::new(
@@ -507,7 +527,7 @@ impl Ext2 {
         }
     }
 
-    pub fn mkdir(&self, dirs: Vec<(usize, &NulStr)>, command: String) -> Option<()> {
+    pub fn mkdir(&self, dirs: Vec<(usize, &NulStr)>, inode: usize, command: String) -> Option<()> {
         // `mkdir childname`
         // create a directory with the given name, add a link to cwd
         // consider supporting `-p path/to_file` to create a path of directories
@@ -515,13 +535,10 @@ impl Ext2 {
         if elts.len() == 1 {
             print!("must pass file to mkdir");
         }
-        let paths = elts[1];
-        let name = elts[2];
+        let name = elts[1];
 
         let s = name.as_ptr();
         let n = unsafe { NulStr::new_unchecked(s) };
-
-        let possible_inode = self.follow_path(paths, dirs).unwrap();
 
         let entry_size = mem::size_of::<u32>()
             + mem::size_of::<u16>()
@@ -541,7 +558,7 @@ impl Ext2 {
         //     }
         // };
 
-        self.insert_dir_entry(possible_inode, name);
+        self.insert_dir_entry(inode, name);
 
         println!("mkdir not yet implemented");
         return None;
@@ -705,7 +722,7 @@ fn main() -> Result<()> {
                     current_working_inode = possible_working_inode.unwrap();
                 }
             } else if line.starts_with("mkdir") {
-                let success = ext2.mkdir(dirs, line);
+                let success = ext2.mkdir(dirs, current_working_inode, line);
                 if success.is_none() {
                     println!("unable to create directory in mkdir");
                 }
