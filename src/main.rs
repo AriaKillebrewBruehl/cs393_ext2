@@ -9,6 +9,7 @@ use rustyline::{DefaultEditor, Result};
 use std::cmp;
 use std::collections::VecDeque;
 use std::fmt;
+use std::fs;
 use std::mem;
 use std::slice;
 use std::str;
@@ -75,7 +76,7 @@ impl Ext2 {
 
         let blocks = unsafe {
             std::slice::from_raw_parts(
-                block_groups_rest_bytes.1.as_ptr() as *const u8,
+                block_groups_rest_bytes.1.as_ptr() as *mut u8,
                 // would rather use: device_bytes.as_ptr(),
                 superblock.blocks_count as usize * block_size,
             )
@@ -256,19 +257,19 @@ impl Ext2 {
     ) -> std::io::Result<isize> {
         let bytes_to_write = cmp::min(
             self.block_size,
-            (whole_size as usize - bytes_written as usize),
+            whole_size as usize - bytes_written as usize,
         );
         // write bytes from contiguous data to data block
         let data_ptr = (contiguous_data as *const Vec<u8>) as *const u8;
         let vec_to_write = unsafe {
-            std::slice::from_raw_parts(
-                data_ptr.offset(bytes_written as isize),
-                bytes_to_write as usize,
-            )
+            std::slice::from_raw_parts(data_ptr.offset(bytes_written as isize), bytes_to_write)
         };
 
         // then write vec_to_write to self.blocks
         let offset = 0;
+        unsafe {
+            direct_pointer.write(8);
+        }
         for i in 0..vec_to_write.len() {
             unsafe {
                 direct_pointer
@@ -276,7 +277,7 @@ impl Ext2 {
                     .write_bytes(contiguous_data[(bytes_written + i as u64) as usize], 1)
             }
         }
-        return Ok(bytes_to_write as isize);
+        Ok(bytes_to_write as isize)
     }
 
     pub fn write_dir_inode(
@@ -303,12 +304,11 @@ impl Ext2 {
         let mut bytes_written: isize = 0;
         // write to all the direct pointer blocks
         // what if you need to allocate a new block
-        while i < 12 && bytes_written < whole_size as isize {
+        while i < 12 && bytes_written < whole_size as isize && root.direct_pointer[i] != 0 {
             let entry_ptr = self.blocks[root.direct_pointer[i] as usize - self.block_offset];
-            let entry_ptr_mut = entry_ptr.as_ptr();
             let ret: isize = match self.write_dir_entry_block(
                 data,
-                entry_ptr_mut as *mut u8,
+                entry_ptr.as_ptr() as *mut u8,
                 whole_size,
                 bytes_written as u64,
             ) {
@@ -319,8 +319,10 @@ impl Ext2 {
             };
             bytes_written += ret;
             i += 1;
+            println!(" bytes written : {}", bytes_written);
         }
 
+        assert!(bytes_written as u64 == whole_size);
         return Ok(());
     }
 
@@ -375,7 +377,8 @@ impl Ext2 {
         }
 
         // write data back out
-        self.write_dir_inode(inode, &mut contiguous_data, entry_size as u16);
+        self.write_dir_inode(inode, &mut contiguous_data, entry_size as u16)
+            .expect("write_dir_inode failes");
 
         // let whole_size: u64 = ((root.size_high as u64) << 32) + root.size_low as u64;
 
@@ -558,10 +561,9 @@ impl Ext2 {
         //     }
         // };
 
-        self.insert_dir_entry(inode, name);
-
-        println!("mkdir not yet implemented");
-        return None;
+        self.insert_dir_entry(inode, name)
+            .expect("insert_dir_entry failed");
+        Some(())
     }
 
     pub fn cat(&self, dirs: Vec<(usize, &NulStr)>, command: String) -> Option<()> {
@@ -681,7 +683,7 @@ impl fmt::Debug for Inode {
     }
 }
 fn main() -> Result<()> {
-    let disk = include_bytes!("../myfs.ext2");
+    let disk = fs::read("myfs.ext2").expect("Couldn't find FS");
     // let disk = include_bytes!("../largefs.ext2");
     // maybe load this at runtime rather than have this be a byte array at compile time
     // create a new shell command 'mount' that takes a file name and reads the file into one big string
