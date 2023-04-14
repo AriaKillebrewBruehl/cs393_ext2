@@ -171,8 +171,6 @@ impl Ext2 {
         }
 
         let whole_size: u64 = ((root.size_high as u64) << 32) + root.size_low as u64;
-
-        println!("whole size in contig_data: {}", whole_size);
         let mut contiguous_data: Vec<u8> = Vec::new();
         let mut i = 0;
         let mut bytes_read: isize = 0;
