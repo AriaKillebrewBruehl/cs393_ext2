@@ -192,6 +192,13 @@ impl Ext2 {
             bytes_read += ret;
             i += 1;
         }
+        for i in (0..contiguous_data.len()).rev() {
+            if contiguous_data[i] != 0 {
+                contiguous_data.truncate(i + 1);
+                println!("contiguous data after trim: {:?}", contiguous_data);
+                return Ok(contiguous_data);
+            }
+        }
 
         return Ok(contiguous_data);
     }
@@ -205,6 +212,7 @@ impl Ext2 {
             Ok(data_vector) => data_vector,
             Err(_) => panic!("Whoopsies"),
         };
+        // println!("contiguous data: {:?}", contiguous_data);
         let root = self.get_inode(inode);
         if root.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
             return Err(std::io::Error::new(
@@ -220,6 +228,8 @@ impl Ext2 {
         while byte_offset < whole_size as isize {
             let directory = unsafe { &*(data_ptr.offset(byte_offset) as *const DirectoryEntry) };
             byte_offset += directory.entry_size as isize;
+            // println!("entry name: {}", &directory.name);
+            // println!("entry size: {}", directory.entry_size);
             ret_vec.push((directory.inode as usize, &directory.name));
         }
 
@@ -264,6 +274,9 @@ impl Ext2 {
         let vec_to_write = unsafe {
             std::slice::from_raw_parts(data_ptr.offset(bytes_written as isize), bytes_to_write)
         };
+        println!("bytes written: {}", bytes_written);
+        println!("bytes to write: {}", bytes_to_write);
+        println!("contiguous data length: {}", contiguous_data.len());
 
         // then write vec_to_write to self.blocks
         let offset = 0;
@@ -294,11 +307,15 @@ impl Ext2 {
             ));
         }
 
-        let mut whole_size: u64 = ((root.size_high as u64) << 32) + root.size_low as u64;
-        println!("{}", whole_size as usize + new_entry_size as usize);
-        println!("{}", data.len());
-        assert!(whole_size as usize + new_entry_size as usize == data.len());
-        whole_size += new_entry_size as u64;
+        // let mut whole_size: u64 = ((root.size_high as u64) << 32) + root.size_low as u64;
+        let mut whole_size: u64 = data.len() as u64;
+        println!(
+            "whole size: {}",
+            whole_size as usize + new_entry_size as usize
+        );
+        println!("data length: {}", data.len());
+        // assert!(whole_size as usize + new_entry_size as usize == data.len());
+        // whole_size += new_entry_size as u64;
 
         let mut i = 0;
         let mut bytes_written: isize = 0;
@@ -332,6 +349,10 @@ impl Ext2 {
             Ok(data_vector) => data_vector,
             Err(_) => panic!("Whoopsies"),
         };
+        // println!(
+        //     "contiguous data before adding new entry: {:?}",
+        //     contiguous_data,
+        // );
 
         println!("Here is the contiguous data len{}", contiguous_data.len());
         // add the new directory entry to the end as bytes
@@ -375,10 +396,14 @@ impl Ext2 {
                 "inode is not a directory",
             ));
         }
+        // println!(
+        //     "contiguous data after adding new entry: {:?}",
+        //     contiguous_data,
+        // );
 
         // write data back out
         self.write_dir_inode(inode, &mut contiguous_data, entry_size as u16)
-            .expect("write_dir_inode failes");
+            .expect("write_dir_inode fails");
 
         // let whole_size: u64 = ((root.size_high as u64) << 32) + root.size_low as u64;
 
