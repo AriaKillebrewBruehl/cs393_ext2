@@ -171,6 +171,8 @@ impl Ext2 {
         }
 
         let whole_size: u64 = ((root.size_high as u64) << 32) + root.size_low as u64;
+
+        println!("whole size in contig_data: {}", whole_size);
         let mut contiguous_data: Vec<u8> = Vec::new();
         let mut i = 0;
         let mut bytes_read: isize = 0;
@@ -195,7 +197,7 @@ impl Ext2 {
         for i in (0..contiguous_data.len()).rev() {
             if contiguous_data[i] != 0 {
                 contiguous_data.truncate(i + 1);
-                println!("contiguous data after trim: {:?}", contiguous_data);
+                // println!("contiguous data after trim: {:?}", contiguous_data);
                 return Ok(contiguous_data);
             }
         }
@@ -212,6 +214,11 @@ impl Ext2 {
             Ok(data_vector) => data_vector,
             Err(_) => panic!("Whoopsies"),
         };
+        println!(
+            "contiguous data (length: {}) in read_dir_inode: {:?}",
+            contiguous_data.len(),
+            contiguous_data
+        );
         // println!("contiguous data: {:?}", contiguous_data);
         let root = self.get_inode(inode);
         if root.type_perm & TypePerm::DIRECTORY != TypePerm::DIRECTORY {
@@ -225,11 +232,11 @@ impl Ext2 {
 
         let data_ptr = contiguous_data.as_ptr();
         let mut byte_offset: isize = 0;
-        while byte_offset < whole_size as isize {
+        while byte_offset < contiguous_data.len() as isize {
             let directory = unsafe { &*(data_ptr.offset(byte_offset) as *const DirectoryEntry) };
             byte_offset += directory.entry_size as isize;
-            // println!("entry name: {}", &directory.name);
-            // println!("entry size: {}", directory.entry_size);
+            println!("entry name: {}", &directory.name);
+            println!("entry size: {}", directory.entry_size);
             ret_vec.push((directory.inode as usize, &directory.name));
         }
 
@@ -280,16 +287,20 @@ impl Ext2 {
 
         // then write vec_to_write to self.blocks
         let offset = 0;
-        unsafe {
-            direct_pointer.write(8);
-        }
+        // unsafe {
+        //     direct_pointer.write(8);
+        // }
+
         for i in 0..vec_to_write.len() {
             unsafe {
                 direct_pointer
-                    .offset(offset)
+                    .offset(i as isize)
                     .write_bytes(contiguous_data[(bytes_written + i as u64) as usize], 1)
             }
         }
+        let new_data = unsafe { slice::from_raw_parts(direct_pointer, bytes_to_write) };
+        println!("data out after write: {:?}", new_data);
+
         Ok(bytes_to_write as isize)
     }
 
@@ -349,10 +360,53 @@ impl Ext2 {
             Ok(data_vector) => data_vector,
             Err(_) => panic!("Whoopsies"),
         };
-        // println!(
-        //     "contiguous data before adding new entry: {:?}",
-        //     contiguous_data,
-        // );
+        // update second to last directory entry's size
+        let mut data_ptr = contiguous_data.as_ptr() as *mut u8;
+        let mut byte_offset: isize = 0;
+        let mut num_dir_entry = 0;
+        let mut last_dir_entry_name_length = 0;
+        while byte_offset < contiguous_data.len() as isize {
+            let directory = unsafe { &*(data_ptr.offset(byte_offset) as *const DirectoryEntry) };
+            byte_offset += directory.entry_size as isize;
+            println!("entry name: {}", &directory.name);
+            println!("entry size0: {}", directory.entry_size);
+            last_dir_entry_name_length = directory.name_length;
+            num_dir_entry += 1;
+        }
+        let mut i = 0;
+        byte_offset = 0;
+        let mut entry_size = last_dir_entry_name_length as usize;
+        while byte_offset < contiguous_data.len() as isize {
+            i += 1;
+            if i == num_dir_entry {
+                entry_size += (mem::size_of::<u32>()
+                    + mem::size_of::<u16>()
+                    + mem::size_of::<u8>()
+                    + mem::size_of::<TypeIndicator>()
+                    + 1);
+                unsafe {
+                    data_ptr
+                        .offset(byte_offset + 4)
+                        .write_bytes(entry_size.as_bytes()[0], 1)
+                };
+                unsafe {
+                    data_ptr
+                        .offset(byte_offset + 5)
+                        .write_bytes(entry_size.as_bytes()[1], 1)
+                };
+            }
+            let directory = unsafe { &*(data_ptr.offset(byte_offset) as *const DirectoryEntry) };
+            byte_offset += directory.entry_size as isize;
+            println!("entry name: {}", &directory.name);
+            println!("entry size1: {}", directory.entry_size);
+        }
+
+        println!(
+            "contiguous data before adding new entry: {:?}",
+            contiguous_data,
+        );
+
+        // update last entry's size
 
         println!("Here is the contiguous data len{}", contiguous_data.len());
         // add the new directory entry to the end as bytes
@@ -396,14 +450,17 @@ impl Ext2 {
                 "inode is not a directory",
             ));
         }
-        // println!(
-        //     "contiguous data after adding new entry: {:?}",
-        //     contiguous_data,
-        // );
+        println!(
+            "contiguous data after adding new entry: {:?}",
+            contiguous_data,
+        );
 
         // write data back out
         self.write_dir_inode(inode, &mut contiguous_data, entry_size as u16)
             .expect("write_dir_inode fails");
+
+        // make the entry size correct
+        // add to inode table
 
         // let whole_size: u64 = ((root.size_high as u64) << 32) + root.size_low as u64;
 
