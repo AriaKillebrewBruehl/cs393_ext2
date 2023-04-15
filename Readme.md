@@ -91,21 +91,20 @@ I'm kidding. But in all seriousness, we understood how this works and could have
 
 ### What We Would Do Differently
 
-There is so much to say here and so little time to say it. I think in an ideal world where our time was less limited, we would have stripped out a lot of the code and started from scratch. The C memory tricks are useful, but the code is very fragile and we found it resistant to change. We probably would have been better of keeping the structs that were there, changing how the filesystem is read so that it is not loaded into the binary, and staying away from using `unsafe` as much as possible. The great thing about Rust is that if we go it to compile, it usually worked. The bad thing is that it rarely did compile the first time when changes were made to the code's structure.
+There is so much to say here and so little time to say it. We think in an ideal world where our time was less limited, we would have stripped out a lot of the code and started from scratch. The C memory tricks are useful, but the code is very fragile and we found it resistant to change. We probably would have been better of keeping the structs that were there, changing how the filesystem is read so that it is not loaded into the binary, and staying away from using `unsafe` as much as possible. The great thing about Rust is that if we go it to compile, it usually worked. The bad thing is that it rarely did compile the first time when changes were made to the code's structure.
 
-I think we also would have been more diligent in writing tests. This is really still related to stripping out the code, because it its current state tests would be extremely hard to write.
+We think we also would have been more diligent in writing tests. This is really still related to stripping out the code, because it its current state tests would be extremely hard to write.
 
 ## Areas of Expansion
 
-- actually making it so you can `cd` into a new directory
+Here are areas where the code could be improved, specifically the functionality
 
-  - allocating an inode for the new directory
-  - giving that inode DEs for `.` and `..`
-
-- reading indirect, doubly, triply indirect pointers for large files and directories
-
-- saving state of FS
-
--
+- Reading data blocks
+	- Right now, both `cat` and `mkdir` only read the direct pointers of the inode. 
+- `mkdir` improvements
+	- the new entry created by mkdir needs to be inflated to fill out the end of the data block
+	- the new entry also needs to actually be created: it needs an inode with entries for `.` and `..`
+- Writing out
+	- We are mounting the `myfs.ext2` file rather than reading it into the binary at compile time, but we are not writing out the changes made by `mkdir`. Once the previous issues are fixed, one should write to the `ext2` file so that the changes persist to the next program run.
 
 Credits: Reed College CS393 students, @tzlil on the Rust #osdev discord
