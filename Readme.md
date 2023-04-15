@@ -27,6 +27,10 @@ PU      ..      lost+found      test_directory
 
 ## Design and Implementation
 
+### Code cleanup
+
+We decided that it would be a lot easier to read if all the command line calls were handled by their own function. This allowed us to work on different parts of the program at once and to better diagnose where the trouble spots were in our code.
+
 ### `follow-path` function
 
 In the original implementation of `cd` it was not possible to follow folder paths. You could not, for example, do `cd dirA/dirB/dirC`. To support this functionality we wrote a `follow_path` method for the `ext2` struct which takes a path name and a vector of the directories of the current working inode as input and returns the inode number for the final directory, if it exists.
@@ -87,12 +91,9 @@ I'm kidding. But in all seriousness, we understood how this works and could have
 
 ### What We Would Do Differently
 
-There is so much to say here and so little time to say it. 
-- start more from scratch
+There is so much to say here and so little time to say it. I think in an ideal world where our time was less limited, we would have stripped out a lot of the code and started from scratch. The C memory tricks are useful, but the code is very fragile and we found it resistant to change. We probably would have been better of keeping the structs that were there, changing how the filesystem is read so that it is not loaded into the binary, and staying away from using `unsafe` as much as possible. The great thing about Rust is that if we go it to compile, it usually worked. The bad thing is that it rarely did compile the first time when changes were made to the code's structure.
 
-  - spent way too much time trying to understand someone else's code
-
-- less unsafe
+I think we also would have been more diligent in writing tests. This is really still related to stripping out the code, because it its current state tests would be extremely hard to write.
 
 ## Areas of Expansion
 
