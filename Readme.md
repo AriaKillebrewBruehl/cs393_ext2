@@ -1,3 +1,5 @@
+# Aria and Caden CSCI 393 Final Project
+
 This is a starting point for parsing and navigating ext2 file systems.
 `cargo run` will start a session that looks like a shell. All you can
 do for now are the `ls`, and `cd` commands.
@@ -5,6 +7,8 @@ It's left as an exercise to implement `cat` to view the contents of files,
 and removing other limitations.
 
 Here's an example session:
+
+** REDO THIS**
 
 ```
 % cargo run
@@ -23,53 +27,75 @@ cat not yet implemented
 :>
 ```
 
-Limitations (also possible exercises):
-
-- see "TODO" in `cd` command - you can currently `cd` into a text
-  file - whoops!
-- implement `cat` command to view text files
-- currently it only parses small directories, remove this limitation
-- implement `mkdir`
-- implement `link <source name> <destination path>` to create hard
-  links
-- write tests
-- write more tests
-- implement `rm` (aka unlink) for plain files
-- make `link` robust against ... (what should `link` be robust
-  against?)
-- once modifications can be made, implement `unmount` which cleanly
-  writes modifications back to the "device" (file)
-- implement `import` to get a file from the "host" filesystem into
-  ours
-- implement a `mount <host-file> <dirname>` command to mount a local file as an ext2
-  filesystem over an empty directory.
-
-Big projects:
-
-- make it `#[no_std]` compatible
-- instead of reading from a big byte-buffer, read from a device into
-  manually managed page-sized buffers
-- implement a buffer cache
-- implement `fsck` - identify different inconsistencies and find them
-- implement a simple line editor (ed?) to create text files in the
-  filesystem
-
-Bigger projects:
-
-- ext4 support?
-- integrate with reedos kernel memory allocation
-- integrate caching with kernel VM
-
 Credits: Reed College CS393 students, @tzlil on the Rust #osdev discord
 
 ## Aria and Caden Project To-Dos:
 
-- [ ] make bigger files and stuff
-- [ ] writes tests
-- [ ] clean up code to have functions for all the input commands
-- [ ] `ls` with large directories
-- [ ] `cat` with large files
-- [ ] `mkdir`
-- [ ] `touch`
-- [ ] `rm`
-- [ ] `links`
+What we actually did
+
+- [x] make bigger files
+- [x] clean up code to have functions for all the input commands
+- follow path
+- cat
+- [x] `mkdir`
+
+## Design and Implementation
+
+### `follow-path` function
+
+- parsing the path that got passed in and making sure all the elements were directories
+  - the last element doesn't need to be a directory so this works for cat as well
+- update current working inode to be last element of the path
+
+## `cat`
+
+- read all the bytes in the direct block pointers
+  - not working for large files
+
+## `mkdir`
+
+- given a directory inode
+
+  - find the end of its directory entries
+  - add a new directory entry at the end of this
+
+  - initially to do this we tried to do this by casting bytes of data from the direct blocks as directory entries as the original code is
+
+    - this doesn't work because DEs are not all the same size and some of them can span multiple blocks
+
+    - so then we needed to read all the data out of the direct blocks as bytes into a vector called `contiguous_data` to fix the issue of DEs spanning blocks
+
+    - then we thought we'd just create a DE object for our new entry and add it to the end of `contig_dat` and write it back out
+
+      - this didn't work bc you can't make a DE object because the name field is a `NulStr` and is not sized
+
+        - so to work around this we needed to manually add all the elements of the entry to the `contig_data` vect
+
+          - we also had to deal w the fact that the last DE gets padded to fill out a block
+
+            - so we needed to change the entry size of the last DE before adding in our new one
+
+        - then we tried to write the `contig_data` vect back out but we realized we couldn't since the FS is part of the binary / is loaded in at compile time
+
+          - so then we needed to read the FS in at run time so we could actually write to the direct blocks
+
+### What We Would Do Differently
+
+- start more from scratch
+
+  - spent way too much time trying to understand someone else's code
+
+- less unsafe
+
+## Areas of Expansion
+
+- actually making it so you can `cd` into a new directory
+
+  - allocating an inode for the new directory
+  - giving that inode DEs for `.` and `..`
+
+- reading indirect, doubly, triply indirect pointers for large files and directories
+
+- saving state of FS
+
+-
