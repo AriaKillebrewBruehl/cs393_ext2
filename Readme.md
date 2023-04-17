@@ -1,6 +1,6 @@
 # Aria and Caden CSCI 393 Final Project
 
-## Summary 
+## Summary
 
 This is our project which builds on an Implementation of Ext2 in Rust. We started with the code given to the class and set out to expand and improve the functionality. This is a summary of what we did and the process.
 
@@ -18,7 +18,7 @@ Here's an example session:
 :> cat test_directory/file_in_folder.txt
 Hello! I'm a file inside a folder.
 :> ls
-PU      ..      lost+found      test_directory  
+PU      ..      lost+found      test_directory
 :> mkdir hello
 :> ls
 .      ..      lost+found      test_directory  hello.txt       hello
@@ -60,6 +60,28 @@ I'm kidding. But in all seriousness, we understood how this works and could have
 
 ## `mkdir`
 
+`mkdir` was much more difficult than expected. When we initially approached this problem we figured the steps for creating a new directory would be straight forward:
+
+1. make a new `DirectoryEntry` object with the correct `name` and `entry_size`
+2. find the location in memory where this `DirectoryEntry` will be inserted
+3. insert it
+
+All three of these steps proved quite difficult to complete.
+
+To complete step `2` we knew we needed to find the end of the `DirectoryEntry`s for our current inode. We thought this could be done using the `size_low` and `size_high` attributes of the `Inode` object and casting the bytes of the direct block pointers as `DirectoryEntry`s until we reached the last one. This was not a viable approach since a `DirectoryEntry` can span multiple blocks with the last entry being padded to fill the whole block:
+
+```
+direct block 0:
+|| DE0            | DE1       | DE2    ||
+
+direct block 1:
+|| DE2 cont.| DE3                      ||
+```
+
+Try to cast `direct block 1` as `DirectoryEntry` objects directly is impossible since this block begins with a partial entry.
+
+To resolve this issue we needed to read the data from the direct blocks into a contiguous array, `contiguous_data`. This was done by reading the data out of the blocks and into `contiguous_data` as bytes. This solved the issue of entries that spanned multiple blocks but
+
 - given a directory inode
 
   - find the end of its directory entries
@@ -87,7 +109,8 @@ I'm kidding. But in all seriousness, we understood how this works and could have
 
 ### What We Would Do Differently
 
-There is so much to say here and so little time to say it. 
+There is so much to say here and so little time to say it.
+
 - start more from scratch
 
   - spent way too much time trying to understand someone else's code
