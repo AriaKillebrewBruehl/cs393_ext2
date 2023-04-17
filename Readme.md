@@ -43,9 +43,28 @@ What we actually did
 
 ### `follow-path` function
 
-- parsing the path that got passed in and making sure all the elements were directories
-  - the last element doesn't need to be a directory so this works for cat as well
-- update current working inode to be last element of the path
+In the original implementation of `cd` it was not possible to follow folder paths. You could not, for example, do `cd dirA/dirB/dirC`. To support this functionality we wrote a `follow_path` method for the `ext2` struct which takes a path name and a vector of the directories of the current working inode as input and returns the inode number for the final directory, if it exists.
+
+The implementation was relatively straight forward:
+
+- save the directory that the call is made from, `initial_dir`, which will be returned if the path cannot be followed
+
+- split the path into a vector of the directories that must be followed, `candidate_directories`
+
+- set `dirs` to be a vector of all `DirectoryEntries` currently reachable
+
+- for each `candidate` in `candidate_directories`:
+
+  - make sure `candidate` exists in `dirs`
+    - if it does not return `initial_dir`
+  - get inode number form `candidate`
+  - make sure `candidate` is a has `TypePerm::DIRECTORY` set (this does not need to be true for the last `candidate`)
+    - if it does not return `initial_dir`
+  - update `dirs` to be `DirectoryEntries` of `candidate`
+
+- return the inode number of the final `candidate`
+
+The `follow_path` function also allows the user to run the `cat` command with a file path (`cat dirA/dirB/dirC/file.txt`).
 
 ## `cat`
 
