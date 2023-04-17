@@ -27,6 +27,10 @@ PU      ..      lost+found      test_directory
 
 ## Design and Implementation
 
+### Code cleanup
+
+We decided that it would be a lot easier to read if all the command line calls were handled by their own function. This allowed us to work on different parts of the program at once and to better diagnose where the trouble spots were in our code.
+
 ### `follow-path` function
 
 In the original implementation of `cd` it was not possible to follow folder paths. You could not, for example, do `cd dirA/dirB/dirC`. To support this functionality we wrote a `follow_path` method for the `ext2` struct which takes a path name and a vector of the directories of the current working inode as input and returns the inode number for the final directory, if it exists.
@@ -113,21 +117,18 @@ There is so much to say here and so little time to say it.
 
 - start more from scratch
 
-  - spent way too much time trying to understand someone else's code
-
-- less unsafe
+We think we also would have been more diligent in writing tests. This is really still related to stripping out the code, because it its current state tests would be extremely hard to write.
 
 ## Areas of Expansion
 
-- actually making it so you can `cd` into a new directory
+Here are areas where the code could be improved, specifically the functionality
 
-  - allocating an inode for the new directory
-  - giving that inode DEs for `.` and `..`
-
-- reading indirect, doubly, triply indirect pointers for large files and directories
-
-- saving state of FS
-
--
+- Reading data blocks
+  - Right now, both `cat` and `mkdir` only read the direct pointers of the inode.
+- `mkdir` improvements
+  - the new entry created by mkdir needs to be inflated to fill out the end of the data block
+  - the new entry also needs to actually be created: it needs an inode with entries for `.` and `..`
+- Writing out
+  - We are mounting the `myfs.ext2` file rather than reading it into the binary at compile time, but we are not writing out the changes made by `mkdir`. Once the previous issues are fixed, one should write to the `ext2` file so that the changes persist to the next program run.
 
 Credits: Reed College CS393 students, @tzlil on the Rust #osdev discord
