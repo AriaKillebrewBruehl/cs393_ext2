@@ -25,7 +25,6 @@ PU      ..      lost+found      test_directory
 :>
 ```
 
-
 ## Design and Implementation
 
 ### `follow-path` function
@@ -55,8 +54,9 @@ The `follow_path` function also allows the user to run the `cat` command with a 
 
 ## `cat`
 
-- read all the bytes in the direct block pointers
-  - not working for large files
+This part was fairly simple, as in the original code, calling `ls` on a file nearly printed out its contents. The concept is the same: we want to read the pointers in the inode for a file, except in this case the pointers point to data blocks full of characters rather than Directory Entries. So we can go through the blocks that direct pointers point to, cast them as Nullstrings, and print the result. This would work for files that are longer than can fit in direct pointers, except you would have to parse the doubly and triply indirect pointer as well. This is left as an exercise for the reader.
+
+I'm kidding. But in all seriousness, we understood how this works and could have implemented it, but we were more interested in the `mkdir` problem. As two seniors with limited time, we chose the more interesting problem.
 
 ## `mkdir`
 
@@ -87,6 +87,7 @@ The `follow_path` function also allows the user to run the `cat` command with a 
 
 ### What We Would Do Differently
 
+There is so much to say here and so little time to say it. 
 - start more from scratch
 
   - spent way too much time trying to understand someone else's code
