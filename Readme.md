@@ -1,43 +1,30 @@
 # Aria and Caden CSCI 393 Final Project
 
-This is a starting point for parsing and navigating ext2 file systems.
-`cargo run` will start a session that looks like a shell. All you can
-do for now are the `ls`, and `cd` commands.
-It's left as an exercise to implement `cat` to view the contents of files,
-and removing other limitations.
+## Summary 
+
+This is our project which builds on an Implementation of Ext2 in Rust. We started with the code given to the class and set out to expand and improve the functionality. This is a summary of what we did and the process.
+
+We ended up cleaning up the code to have functions for all the input commands. We also implemented a follow path function so that when you `ls` or `cd`, you can provide a file path instead of being limited to only files in the current directory. We also implemented cat and a limited version of mkdir. These improvements are detailed in the Design and Implementation section below.
 
 Here's an example session:
 
-** REDO THIS**
-
 ```
-% cargo run
-   <building and intro stuff>
 :> ls
-.	..	lost+found	test_directory	hello.txt
-:> cat hello.txt
-cat not yet implemented
+.      ..      lost+found      test_directory  hello.txt
 :> cd test_directory
 :> ls
-.	..	file_in_folder.txt
-:> cd file_in_folder.txt    # <- whoops
+.      ..      file_in_folder.txt
+:> cd ..
+:> cat test_directory/file_in_folder.txt
+Hello! I'm a file inside a folder.
 :> ls
-'m a file inside a folder.  # <- whoops^2
-
+PU      ..      lost+found      test_directory  
+:> mkdir hello
+:> ls
+.      ..      lost+found      test_directory  hello.txt       hello
 :>
 ```
 
-Credits: Reed College CS393 students, @tzlil on the Rust #osdev discord
-
-## Aria and Caden Project To-Dos:
-
-What we actually did
-
-- [x] make bigger files
-- [x] clean up code to have functions for all the input commands
-- follow path
-- cat
-- [x] `mkdir`
 
 ## Design and Implementation
 
@@ -118,3 +105,5 @@ The `follow_path` function also allows the user to run the `cat` command with a 
 - saving state of FS
 
 -
+
+Credits: Reed College CS393 students, @tzlil on the Rust #osdev discord
