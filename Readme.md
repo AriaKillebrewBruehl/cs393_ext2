@@ -113,9 +113,7 @@ To resolve this issue we needed to read the data from the direct blocks into a c
 
 ### What We Would Do Differently
 
-There is so much to say here and so little time to say it.
-
-- start more from scratch
+There is so much to say here and so little time to say it. We think in an ideal world where our time was less limited, we would have stripped out a lot of the code and started from scratch. The C memory tricks are useful, but the code is very fragile and we found it resistant to change. We probably would have been better of keeping the structs that were there, changing how the filesystem is read so that it is not loaded into the binary, and staying away from using `unsafe` as much as possible. The great thing about Rust is that if we go it to compile, it usually worked. The bad thing is that it rarely did compile the first time when changes were made to the code's structure.
 
 We think we also would have been more diligent in writing tests. This is really still related to stripping out the code, because it its current state tests would be extremely hard to write.
 
