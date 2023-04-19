@@ -66,13 +66,13 @@ I'm kidding. But in all seriousness, we understood how this works and could have
 
 `mkdir` was much more difficult than expected. When we initially approached this problem we figured the steps for creating a new directory would be straight forward:
 
-1. make a new `DirectoryEntry` object with the correct `name` and `entry_size`
-2. find the location in memory where this `DirectoryEntry` will be inserted
+1. find the location in memory where this `DirectoryEntry` will be inserted
+2. make a new `DirectoryEntry` object with the correct `name` and `entry_size`
 3. insert it
 
 All three of these steps proved quite difficult to complete.
 
-To complete step `2` we knew we needed to find the end of the `DirectoryEntry`s for our current inode. We thought this could be done using the `size_low` and `size_high` attributes of the `Inode` object and casting the bytes of the direct block pointers as `DirectoryEntry`s until we reached the last one. This was not a viable approach since a `DirectoryEntry` can span multiple blocks with the last entry being padded to fill the whole block:
+To complete step `1` we knew we needed to find the end of the `DirectoryEntry`s for our current inode. We thought this could be done using the `size_low` and `size_high` attributes of the `Inode` object and casting the bytes of the direct block pointers as `DirectoryEntry`s until we reached the last one. This was not a viable approach since a `DirectoryEntry` can span multiple blocks with the last entry being padded to fill the whole block:
 
 ```
 direct block 0:
@@ -84,32 +84,13 @@ direct block 1:
 
 Try to cast `direct block 1` as `DirectoryEntry` objects directly is impossible since this block begins with a partial entry.
 
-To resolve this issue we needed to read the data from the direct blocks into a contiguous array, `contiguous_data`. This was done by reading the data out of the blocks and into `contiguous_data` as bytes. This solved the issue of entries that spanned multiple blocks but
+To resolve this issue we needed to read the data from the direct blocks into a contiguous array, `contiguous_data`. This was done by reading the data out of the blocks and into `contiguous_data` as bytes. This solved the issue of entries that spanned multiple blocks. The `contiguous_data` vector would still be padded with `0` bytes since the last `DirectoryEntry` is extended to fill the entire block. To fix this we simply trim `contiguous_data` to remove any `0`s at the end of the vector.
 
-- given a directory inode
+The next step was creating the new directory entry and adding it to the end of `contiguous_data`. Initially we attempted to do this by creating a new `DirectoryEntry` object with the correct values and simply appending those bytes to the end of `contiguous_data`. This was impossible since a `DirectoryEntry` object contains a `NulStr` which is not sized. To append the entry to `contiguous_data` we needed to manually append the bytes for each of the fields of the entry to the vector.
 
-  - find the end of its directory entries
-  - add a new directory entry at the end of this
+Then, to update the actual data store in the direct blocks, we wrote the bytes stored in `contiguous_data` back out to the data blocks. This was impossible with the original code since the file system was being loaded in at compile time and was therefore encoded in the binary. So to be able to actually write to the data blocks we needed to change the loading in of the file system to be done at runtime. Once we got this working we wrote `contiguous_data` back out to the data blocks.
 
-  - initially to do this we tried to do this by casting bytes of data from the direct blocks as directory entries as the original code is
-
-    - this doesn't work because DEs are not all the same size and some of them can span multiple blocks
-
-    - so then we needed to read all the data out of the direct blocks as bytes into a vector called `contiguous_data` to fix the issue of DEs spanning blocks
-
-    - then we thought we'd just create a DE object for our new entry and add it to the end of `contig_dat` and write it back out
-
-      - this didn't work bc you can't make a DE object because the name field is a `NulStr` and is not sized
-
-        - so to work around this we needed to manually add all the elements of the entry to the `contig_data` vect
-
-          - we also had to deal w the fact that the last DE gets padded to fill out a block
-
-            - so we needed to change the entry size of the last DE before adding in our new one
-
-        - then we tried to write the `contig_data` vect back out but we realized we couldn't since the FS is part of the binary / is loaded in at compile time
-
-          - so then we needed to read the FS in at run time so we could actually write to the direct blocks
+Sadly we were still not done. Since the `ext2` file system pads the last directory entry to fill up the rest of the data block the last entry (second to last after adding the new entry) will have a very large entry size. This meant that when trying to read the directory entires back out (i.e. `mkdir test; ls`) we would not see our new entry (`test`). To resolve this issue we needed to update the size of the second to last entry to be the actual size of the entry. Once we did this we had `mkdir` working! Kinda...
 
 ### What We Would Do Differently
 
