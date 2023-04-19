@@ -427,8 +427,7 @@ impl Ext2 {
             "cont data after adding name_size : {}",
             contiguous_data.len()
         );
-        let s = name.as_ptr();
-        let n = unsafe { NulStr::new_unchecked(s) };
+
         contiguous_data.push(2);
         println!(
             "cont data after adding Directory Enum : {}",
