@@ -199,8 +199,6 @@ impl Ext2 {
         while byte_offset < contiguous_data.len() as isize {
             let directory = unsafe { &*(data_ptr.offset(byte_offset) as *const DirectoryEntry) };
             byte_offset += directory.entry_size as isize;
-            println!("entry name: {}", &directory.name);
-            println!("entry size: {}", directory.entry_size);
             ret_vec.push((directory.inode as usize, &directory.name));
         }
         Ok(ret_vec)
@@ -292,8 +290,6 @@ impl Ext2 {
         while byte_offset < contiguous_data.len() as isize {
             let directory = unsafe { &*(data_ptr.offset(byte_offset) as *const DirectoryEntry) };
             byte_offset += directory.entry_size as isize;
-            println!("entry name: {}", &directory.name);
-            println!("entry size0: {}", directory.entry_size);
             last_dir_entry_name_length = directory.name_length;
             num_dir_entry += 1;
         }
