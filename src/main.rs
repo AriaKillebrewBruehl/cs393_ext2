@@ -193,7 +193,6 @@ impl Ext2 {
         }
 
         let whole_size: u64 = ((root.size_high as u64) << 32) + root.size_low as u64;
-
         let data_ptr = contiguous_data.as_ptr();
         let mut byte_offset: isize = 0;
         while byte_offset < contiguous_data.len() as isize {
@@ -303,8 +302,7 @@ impl Ext2 {
                 entry_size += (mem::size_of::<u32>()
                     + mem::size_of::<u16>()
                     + mem::size_of::<u8>()
-                    + mem::size_of::<TypeIndicator>()
-                    + 1);
+                    + mem::size_of::<TypeIndicator>());
                 unsafe {
                     data_ptr
                         .offset(byte_offset + 4)
