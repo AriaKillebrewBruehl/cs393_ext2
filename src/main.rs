@@ -157,9 +157,9 @@ impl Ext2 {
                 whole_size,
                 bytes_read as u64,
             ) {
-                Ok(dir_listing) => dir_listing,
+                Ok(num_bytes_read) => num_bytes_read,
                 Err(_) => {
-                    panic!("OOps");
+                    panic!("Error reading inode");
                 }
             };
             bytes_read += ret;
@@ -199,6 +199,8 @@ impl Ext2 {
             let directory = unsafe { &*(data_ptr.offset(byte_offset) as *const DirectoryEntry) };
             byte_offset += directory.entry_size as isize;
             ret_vec.push((directory.inode as usize, &directory.name));
+            println!("{:?}", &directory.name);
+            println!("In read_dir_inode : {:?}", directory)
         }
         Ok(ret_vec)
     }
@@ -429,6 +431,7 @@ impl Ext2 {
     pub fn ls(&self, dirs: Vec<(usize, &NulStr)>, command: String) -> Option<()> {
         let elts: Vec<&str> = command.split(' ').collect();
         if elts.len() == 1 {
+            println!("IN first if in ls function.");
             for dir in &dirs {
                 print!("{}\t", dir.1);
             }
